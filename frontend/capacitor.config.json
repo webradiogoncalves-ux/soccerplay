@@ -1,0 +1,8 @@
+{
+  "appId": "com.soccerplay.lite",
+  "appName": "SoccerPlay-Lite",
+  "webDir": "dist",
+  "server": {
+    "cleartext": true
+  }
+}
