@@ -12,65 +12,73 @@ const API_BASE = "https://api.api-futebol.com.br/v1";
 const API_KEY = process.env.API_FOOTBALL_KEY;
 
 /*
- * ============================================================
- * SOCCERPLAY - BACKEND
- * API Futebol / FutDev
- * ============================================================
- */
+|--------------------------------------------------------------------------
+| CONFIGURAÇÃO DE CACHE
+|--------------------------------------------------------------------------
+*/
 
-async function apiFetch(path) {
-  if (!API_KEY) {
-    const error = new Error(
-      "API_FOOTBALL_KEY não configurada no Render"
-    );
+const CACHE_TTL = {
+  live: 20 * 1000,       // 20 segundos
+  today: 60 * 1000,      // 1 minuto
+  fixture: 30 * 1000,    // 30 segundos
+  standings: 5 * 60 * 1000,
+  leagues: 30 * 60 * 1000
+};
 
-    error.status = 500;
-    throw error;
+const cache = new Map();
+
+/*
+|--------------------------------------------------------------------------
+| CONTROLE DE REQUISIÇÕES
+|--------------------------------------------------------------------------
+*/
+
+const pendingRequests = new Map();
+
+function getCache(key) {
+  const item = cache.get(key);
+
+  if (!item) {
+    return null;
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-      Accept: "application/json"
-    }
+  const age = Date.now() - item.timestamp;
+
+  return {
+    data: item.data,
+    fresh: age < item.ttl,
+    age
+  };
+}
+
+function setCache(key, data, ttl) {
+  cache.set(key, {
+    data,
+    timestamp: Date.now(),
+    ttl
   });
+}
 
-  const text = await response.text();
+function getStaleCache(key) {
+  const item = cache.get(key);
 
-  let data = null;
-
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = {
-      raw: text
-    };
+  if (!item) {
+    return null;
   }
 
-  if (!response.ok) {
-    const error = new Error(
-      `API Futebol respondeu ${response.status}`
-    );
-
-    error.status = response.status;
-    error.data = data;
-    error.path = path;
-
-    throw error;
-  }
-
-  return data;
+  return item.data;
 }
 
 /*
- * ------------------------------------------------------------
- * Utilidades
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| UTILITÁRIOS
+|--------------------------------------------------------------------------
+*/
 
 function arrayFrom(data) {
-  if (Array.isArray(data)) return data;
+  if (Array.isArray(data)) {
+    return data;
+  }
 
   if (!data || typeof data !== "object") {
     return [];
@@ -79,16 +87,17 @@ function arrayFrom(data) {
   const possibleArrays = [
     data.response,
     data.data,
+    data.result,
+    data.results,
     data.partidas,
     data.jogos,
-    data.matches,
-    data.resultados,
-    data.items
+    data.campeonatos,
+    data.matches
   ];
 
-  for (const item of possibleArrays) {
-    if (Array.isArray(item)) {
-      return item;
+  for (const value of possibleArrays) {
+    if (Array.isArray(value)) {
+      return value;
     }
   }
 
@@ -111,444 +120,505 @@ function firstValue(...values) {
 
 function numberValue(...values) {
   for (const value of values) {
-    if (
-      typeof value === "number" &&
-      Number.isFinite(value)
-    ) {
-      return value;
+    if (value === undefined || value === null || value === "") {
+      continue;
     }
 
-    if (
-      typeof value === "string" &&
-      value.trim() !== "" &&
-      !Number.isNaN(Number(value))
-    ) {
-      return Number(value);
+    const number = Number(value);
+
+    if (!Number.isNaN(number)) {
+      return number;
     }
   }
 
   return null;
 }
 
-function teamObject(team, fallbackName = "Time") {
-  team = team || {};
-
-  const id = firstValue(
-    team.id,
-    team.time_id,
-    team.codigo,
-    team.slug
-  );
-
-  const name = firstValue(
-    team.name,
-    team.nome,
-    team.team_name,
-    team.time,
-    fallbackName
-  );
-
-  const logo = firstValue(
-    team.logo,
-    team.escudo,
-    team.logo_url,
-    team.imagem,
-    ""
-  );
-
-  return {
-    id,
-    name,
-    logo
-  };
-}
-
-/*
- * ------------------------------------------------------------
- * Status
- * ------------------------------------------------------------
- */
-
-function normalizeStatus(match) {
-  const raw = String(
-    firstValue(
-      match.status,
-      match.situacao,
-      match.estado,
-      match.status_jogo,
-      match.status_partida
-    ) || ""
-  ).toLowerCase();
-
-  const minute = numberValue(
-    match.minuto,
-    match.minute,
-    match.tempo,
-    match.elapsed
-  );
-
-  if (
-    raw.includes("final") ||
-    raw.includes("encerr") ||
-    raw === "ft"
-  ) {
-    return {
-      short: "FT",
-      long: "Final",
-      elapsed: minute
-    };
-  }
-
-  if (
-    raw.includes("intervalo") ||
-    raw === "ht"
-  ) {
-    return {
-      short: "HT",
-      long: "Intervalo",
-      elapsed: minute
-    };
-  }
-
-  if (
-    raw.includes("ao vivo") ||
-    raw.includes("andamento") ||
-    raw.includes("live") ||
-    raw.includes("jogando") ||
-    raw.includes("1 tempo") ||
-    raw.includes("2 tempo") ||
-    minute !== null
-  ) {
-    return {
-      short: minute !== null && minute > 45 ? "2H" : "1H",
-      long: "Ao vivo",
-      elapsed: minute
-    };
-  }
-
-  return {
-    short: "NS",
-    long: "Não iniciado",
-    elapsed: minute
-  };
-}
-
-/*
- * ------------------------------------------------------------
- * Times
- * ------------------------------------------------------------
- */
-
-function getHomeTeam(match) {
-  return teamObject(
-    firstValue(
-      match.home,
-      match.mandante,
-      match.time_mandante,
-      match.home_team,
-      match.equipe_mandante
-    ),
-    "Mandante"
-  );
-}
-
-function getAwayTeam(match) {
-  return teamObject(
-    firstValue(
-      match.away,
-      match.visitante,
-      match.time_visitante,
-      match.away_team,
-      match.equipe_visitante
-    ),
-    "Visitante"
-  );
-}
-
-/*
- * ------------------------------------------------------------
- * Placar
- * ------------------------------------------------------------
- */
-
-function getGoals(match) {
-  const home = numberValue(
-    match.gols_mandante,
-    match.gols_mandante_total,
-    match.home_score,
-    match.home_goals,
-    match.placar_mandante,
-    match.mandante_gols,
-    match.home?.score,
-    match.home?.goals
-  );
-
-  const away = numberValue(
-    match.gols_visitante,
-    match.gols_visitante_total,
-    match.away_score,
-    match.away_goals,
-    match.placar_visitante,
-    match.visitante_gols,
-    match.away?.score,
-    match.away?.goals
-  );
-
-  /*
-   * Alguns retornos podem trazer o placar como:
-   * "2 x 1"
-   */
-  const partida = firstValue(
-    match.partida,
-    match.jogo,
-    match.nome
-  );
-
-  if (
-    (home === null || away === null) &&
-    typeof partida === "string"
-  ) {
-    const found = partida.match(
-      /(\d+)\s*[xX×-]\s*(\d+)/
-    );
-
-    if (found) {
-      return {
-        home: home ?? Number(found[1]),
-        away: away ?? Number(found[2])
-      };
+function textValue(...values) {
+  for (const value of values) {
+    if (
+      value !== undefined &&
+      value !== null &&
+      value !== ""
+    ) {
+      return String(value);
     }
   }
 
-  return {
-    home: home ?? 0,
-    away: away ?? 0
-  };
+  return "";
 }
 
 /*
- * ------------------------------------------------------------
- * Campeonato
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| TIMES
+|--------------------------------------------------------------------------
+*/
 
-function getLeague(match) {
-  const championship = firstValue(
-    match.campeonato,
-    match.competicao,
-    match.competition,
-    match.league
-  );
-
-  if (typeof championship === "string") {
+function normalizeTeam(team, fallbackName = "Time") {
+  if (!team) {
     return {
       id: null,
-      name: championship,
-      country: firstValue(
-        match.pais,
-        match.country,
-        match.campeonato_pais,
-        "Brasil"
-      )
+      name: fallbackName,
+      logo: ""
     };
   }
 
-  championship = championship || {};
+  if (typeof team === "string") {
+    return {
+      id: null,
+      name: team,
+      logo: ""
+    };
+  }
 
   return {
-    id: firstValue(
-      championship.id,
-      championship.campeonato_id
+    id: numberValue(
+      team.id,
+      team.time_id,
+      team.team_id,
+      team.codigo
     ),
-    name: firstValue(
-      championship.name,
-      championship.nome,
-      championship.campeonato,
-      "Futebol"
+
+    name: textValue(
+      team.name,
+      team.nome,
+      team.time,
+      team.equipe,
+      fallbackName
     ),
-    country: firstValue(
-      championship.country,
-      championship.pais,
-      match.pais,
-      match.country,
-      "Brasil"
+
+    logo: textValue(
+      team.logo,
+      team.escudo,
+      team.image,
+      team.imagem,
+      team.url_logo
     )
   };
 }
 
 /*
- * ------------------------------------------------------------
- * Data/hora
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| PLACAR
+|--------------------------------------------------------------------------
+*/
 
-function getMatchDate(match) {
+function parseScoreFromText(text) {
+  if (!text || typeof text !== "string") {
+    return {
+      home: null,
+      away: null
+    };
+  }
+
+  /*
+   Exemplos aceitos:
+
+   Flamengo 2 × 1 Palmeiras
+   Flamengo 2 x 1 Palmeiras
+   Fla 2 - 1 Pal
+  */
+
+  const match = text.match(
+    /(?:^|\s)(\d+)\s*[x×\-]\s*(\d+)(?:\s|$)/i
+  );
+
+  if (!match) {
+    return {
+      home: null,
+      away: null
+    };
+  }
+
+  return {
+    home: Number(match[1]),
+    away: Number(match[2])
+  };
+}
+
+function normalizeGoals(item) {
+  const goals = item?.goals || item?.placar || item?.score || {};
+
+  let home = numberValue(
+    goals.home,
+    goals.mandante,
+    goals.casa,
+    goals.home_score,
+    goals.gols_home,
+    item?.gols_home,
+    item?.gols_mandante,
+    item?.placar_mandante
+  );
+
+  let away = numberValue(
+    goals.away,
+    goals.visitante,
+    goals.fora,
+    goals.away_score,
+    goals.gols_away,
+    item?.gols_away,
+    item?.gols_visitante,
+    item?.placar_visitante
+  );
+
+  if (home === null || away === null) {
+    const text = firstValue(
+      item?.partida,
+      item?.jogo,
+      item?.match,
+      item?.placar
+    );
+
+    const parsed = parseScoreFromText(text);
+
+    if (home === null) {
+      home = parsed.home;
+    }
+
+    if (away === null) {
+      away = parsed.away;
+    }
+  }
+
+  return {
+    home,
+    away
+  };
+}
+
+/*
+|--------------------------------------------------------------------------
+| STATUS
+|--------------------------------------------------------------------------
+*/
+
+function normalizeStatus(item) {
+  const status = item?.fixture?.status || item?.status || {};
+
+  const raw = textValue(
+    status.short,
+    status.codigo,
+    status.code,
+    status.status,
+    item?.status,
+    item?.situacao,
+    item?.estado
+  ).toLowerCase();
+
+  let short = "NS";
+
+  if (
+    raw.includes("ao vivo") ||
+    raw.includes("live") ||
+    raw.includes("andamento") ||
+    raw === "1h"
+  ) {
+    short = "2H";
+  } else if (
+    raw.includes("intervalo") ||
+    raw === "ht"
+  ) {
+    short = "HT";
+  } else if (
+    raw.includes("final") ||
+    raw.includes("encerrado") ||
+    raw.includes("fim") ||
+    raw === "ft"
+  ) {
+    short = "FT";
+  } else if (
+    raw.includes("adiado") ||
+    raw.includes("postergado")
+  ) {
+    short = "PST";
+  } else if (
+    raw.includes("cancelado")
+  ) {
+    short = "CANC";
+  } else if (
+    raw.includes("1º tempo") ||
+    raw.includes("primeiro tempo")
+  ) {
+    short = "1H";
+  } else if (
+    raw.includes("2º tempo") ||
+    raw.includes("segundo tempo")
+  ) {
+    short = "2H";
+  } else if (
+    raw === "ns" ||
+    raw.includes("não iniciado") ||
+    raw.includes("nao iniciado")
+  ) {
+    short = "NS";
+  }
+
+  const elapsed = numberValue(
+    status.elapsed,
+    status.minuto,
+    item?.minuto,
+    item?.minute
+  );
+
+  return {
+    long: textValue(
+      status.long,
+      status.nome,
+      item?.status,
+      item?.situacao,
+      short
+    ),
+
+    short,
+
+    elapsed
+  };
+}
+
+/*
+|--------------------------------------------------------------------------
+| CAMPEONATO
+|--------------------------------------------------------------------------
+*/
+
+function normalizeLeague(item) {
+  const league = item?.league || item?.campeonato || {};
+
+  return {
+    id: numberValue(
+      league.id,
+      league.campeonato_id,
+      item?.campeonato_id
+    ),
+
+    name: textValue(
+      league.name,
+      league.nome,
+      item?.campeonato,
+      "Futebol"
+    ),
+
+    country: textValue(
+      league.country,
+      league.pais,
+      item?.pais,
+      item?.country,
+      ""
+    ),
+
+    logo: textValue(
+      league.logo,
+      league.escudo,
+      league.image,
+      ""
+    )
+  };
+}
+
+/*
+|--------------------------------------------------------------------------
+| DATA DA PARTIDA
+|--------------------------------------------------------------------------
+*/
+
+function normalizeDate(item) {
   return firstValue(
-    match.data_hora,
-    match.dataHora,
-    match.datetime,
-    match.date_time,
-    match.data_inicio,
-    match.horario,
-    match.date,
-    match.data,
+    item?.fixture?.date,
+    item?.data,
+    item?.date,
+    item?.datetime,
+    item?.data_hora,
+    item?.horario,
     new Date().toISOString()
   );
 }
 
 /*
- * ------------------------------------------------------------
- * ID
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| ID DA PARTIDA
+|--------------------------------------------------------------------------
+*/
 
-function getMatchId(match, index = 0) {
-  return firstValue(
-    match.id,
-    match.partida_id,
-    match.jogo_id,
-    match.fixture_id,
-    match.codigo,
-    `soccerplay-${index}`
+function normalizeId(item, index = 0) {
+  const id = numberValue(
+    item?.fixture?.id,
+    item?.id,
+    item?.partida_id,
+    item?.jogo_id,
+    item?.match_id
   );
+
+  if (id !== null) {
+    return id;
+  }
+
+  /*
+   Não inventamos IDs numéricos.
+
+   Quando a API não fornece ID, usamos um identificador
+   textual estável somente para permitir que a interface
+   funcione sem criar uma partida falsa.
+  */
+
+  const text = textValue(
+    item?.partida,
+    item?.jogo,
+    item?.match
+  );
+
+  if (text) {
+    return `api-${encodeURIComponent(text)}-${index}`;
+  }
+
+  return `api-match-${index}`;
 }
 
 /*
- * ------------------------------------------------------------
- * Eventos
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| EVENTOS
+|--------------------------------------------------------------------------
+*/
 
-function normalizeEvent(event) {
-  if (!event || typeof event !== "object") {
-    return null;
-  }
-
-  const rawType = String(
-    firstValue(
-      event.type,
-      event.tipo,
-      event.evento,
-      event.event_type,
-      ""
-    )
-  ).toLowerCase();
-
-  let type = "Other";
-
-  if (
-    rawType.includes("gol") ||
-    rawType.includes("goal")
-  ) {
-    type = "Goal";
-  } else if (
-    rawType.includes("cartao") ||
-    rawType.includes("cartão") ||
-    rawType.includes("card") ||
-    rawType.includes("amarelo")
-  ) {
-    type = "Card";
-  } else if (
-    rawType.includes("substit") ||
-    rawType.includes("troca")
-  ) {
-    type = "subst";
-  }
-
-  const team = teamObject(
-    firstValue(
-      event.team,
-      event.time,
-      event.equipe
-    ),
-    "Time"
-  );
-
-  const playerObject = firstValue(
-    event.player,
-    event.jogador
-  );
-
-  const playerName =
-    typeof playerObject === "string"
-      ? playerObject
-      : firstValue(
-          playerObject?.name,
-          playerObject?.nome,
-          event.jogador_nome,
-          event.player_name,
-          event.nome_jogador,
-          event.detalhe,
-          event.detail,
-          ""
-        );
-
-  return {
-    type,
-    team,
-    player: {
-      id:
-        typeof playerObject === "object"
-          ? firstValue(
-              playerObject?.id,
-              playerObject?.jogador_id
-            )
-          : null,
-      name: playerName
-    },
-    time: {
-      elapsed: numberValue(
-        event.minuto,
-        event.minute,
-        event.tempo,
-        event.elapsed,
-        event.time?.elapsed
-      )
-    },
-    detail: firstValue(
-      event.detalhe,
-      event.detail,
-      event.descricao,
-      event.description,
-      ""
-    )
-  };
-}
-
-function getEvents(match) {
+function normalizeEvents(item) {
   const rawEvents = firstValue(
-    match.events,
-    match.eventos,
-    match.lances,
-    match.ocorrencias
+    item?.events,
+    item?.eventos,
+    item?.lances,
+    item?.incidentes
   );
 
   if (!Array.isArray(rawEvents)) {
     return [];
   }
 
-  return rawEvents
-    .map(normalizeEvent)
-    .filter(Boolean);
+  return rawEvents.map((event) => {
+    const typeRaw = textValue(
+      event?.type,
+      event?.tipo,
+      event?.event,
+      event?.evento
+    ).toLowerCase();
+
+    let type = "Substitution";
+
+    if (
+      typeRaw.includes("gol") ||
+      typeRaw.includes("goal")
+    ) {
+      type = "Goal";
+    } else if (
+      typeRaw.includes("cartao") ||
+      typeRaw.includes("cartão") ||
+      typeRaw.includes("card") ||
+      typeRaw.includes("amarelo")
+    ) {
+      type = "Card";
+    }
+
+    const team = normalizeTeam(
+      event?.team ||
+      event?.time ||
+      event?.equipe
+    );
+
+    return {
+      type,
+
+      team,
+
+      player: {
+        id: numberValue(
+          event?.player?.id,
+          event?.jogador?.id
+        ),
+
+        name: textValue(
+          event?.player?.name,
+          event?.player?.nome,
+          event?.jogador?.name,
+          event?.jogador?.nome,
+          event?.jogador
+        )
+      },
+
+      assist: event?.assist
+        ? {
+            id: numberValue(event.assist.id),
+            name: textValue(
+              event.assist.name,
+              event.assist.nome
+            )
+          }
+        : null,
+
+      time: {
+        elapsed: numberValue(
+          event?.time?.elapsed,
+          event?.minuto,
+          event?.minute
+        )
+      },
+
+      detail: textValue(
+        event?.detail,
+        event?.detalhe,
+        event?.descricao,
+        event?.description
+      )
+    };
+  });
 }
 
 /*
- * ------------------------------------------------------------
- * Normalização principal
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| NORMALIZAÇÃO PRINCIPAL
+|--------------------------------------------------------------------------
+*/
 
-function normalizeMatch(match, index = 0) {
-  const home = getHomeTeam(match);
-  const away = getAwayTeam(match);
-  const goals = getGoals(match);
-  const league = getLeague(match);
-  const status = normalizeStatus(match);
+function normalizeMatch(item, index = 0) {
+  const existingHome =
+    item?.teams?.home ||
+    item?.mandante ||
+    item?.home ||
+    item?.time_mandante ||
+    item?.casa;
+
+  const existingAway =
+    item?.teams?.away ||
+    item?.visitante ||
+    item?.away ||
+    item?.time_visitante ||
+    item?.fora;
+
+  /*
+   Algumas respostas podem trazer os times dentro
+   de um objeto "partida".
+  */
+
+  const home = normalizeTeam(
+    existingHome,
+    "Mandante"
+  );
+
+  const away = normalizeTeam(
+    existingAway,
+    "Visitante"
+  );
+
+  const goals = normalizeGoals(item);
+
+  const status = normalizeStatus(item);
+
+  const league = normalizeLeague(item);
+
+  const fixtureId = normalizeId(item, index);
 
   return {
     fixture: {
-      id: getMatchId(match, index),
-      date: getMatchDate(match),
+      id: fixtureId,
+
+      date: normalizeDate(item),
+
       status
     },
 
@@ -561,69 +631,279 @@ function normalizeMatch(match, index = 0) {
 
     league,
 
-    events: getEvents(match),
+    events: normalizeEvents(item),
 
     /*
-     * Mantém os dados originais disponíveis
-     * para futuras funções do SoccerPlay.
-     */
-    soccerplay: {
-      original: match
-    }
+     Dados extras da API, quando existirem.
+     Isso não atrapalha o frontend atual.
+    */
+
+    minute: numberValue(
+      item?.minuto,
+      item?.minute
+    ),
+
+    rawPartida: textValue(
+      item?.partida,
+      item?.jogo,
+      item?.match
+    ),
+
+    raw: item
   };
 }
 
 /*
- * ------------------------------------------------------------
- * Extrai partidas de qualquer formato retornado pela API
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| NORMALIZAÇÃO DE LISTA
+|--------------------------------------------------------------------------
+*/
 
-function normalizeResponse(data) {
+function normalizeMatches(data) {
   const list = arrayFrom(data);
 
-  return list.map((match, index) =>
-    normalizeMatch(match, index)
+  return list.map((item, index) =>
+    normalizeMatch(item, index)
   );
 }
 
 /*
- * ------------------------------------------------------------
- * HEALTH
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| CHAMADA À API FUTEBOL
+|--------------------------------------------------------------------------
+*/
+
+async function apiFetch(path) {
+  if (!API_KEY) {
+    const error = new Error(
+      "API_FOOTBALL_KEY não configurada no Render"
+    );
+
+    error.status = 500;
+
+    throw error;
+  }
+
+  const response = await fetch(
+    `${API_BASE}${path}`,
+    {
+      method: "GET",
+
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        Accept: "application/json"
+      }
+    }
+  );
+
+  const text = await response.text();
+
+  let data = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = {
+      raw: text
+    };
+  }
+
+  if (!response.ok) {
+    const error = new Error(
+      `API Futebol respondeu ${response.status}`
+    );
+
+    error.status = response.status;
+    error.data = data;
+    error.path = path;
+
+    /*
+     Captura Retry-After quando a API fornece.
+    */
+
+    error.retryAfter = response.headers.get(
+      "retry-after"
+    );
+
+    throw error;
+  }
+
+  return data;
+}
+
+/*
+|--------------------------------------------------------------------------
+| CHAMADA COM CACHE E PROTEÇÃO CONTRA 429
+|--------------------------------------------------------------------------
+*/
+
+async function cachedApiFetch(
+  cacheKey,
+  path,
+  ttl
+) {
+  /*
+   1. Se existe cache válido, retorna imediatamente.
+  */
+
+  const cached = getCache(cacheKey);
+
+  if (cached?.fresh) {
+    return cached.data;
+  }
+
+  /*
+   2. Se já existe uma chamada em andamento para
+      o mesmo recurso, reutiliza a mesma Promise.
+
+      Isso impede duas chamadas simultâneas iguais.
+  */
+
+  if (pendingRequests.has(cacheKey)) {
+    return pendingRequests.get(cacheKey);
+  }
+
+  const request = (async () => {
+    try {
+      const data = await apiFetch(path);
+
+      /*
+       Só salva no cache se a API respondeu corretamente.
+      */
+
+      setCache(
+        cacheKey,
+        data,
+        ttl
+      );
+
+      return data;
+    } catch (error) {
+      /*
+       3. Se for 429, usa o último cache válido.
+      */
+
+      if (error.status === 429) {
+        const stale = getStaleCache(cacheKey);
+
+        if (stale !== null) {
+          console.warn(
+            `429 da API em ${path}. Usando cache anterior.`
+          );
+
+          return stale;
+        }
+
+        console.warn(
+          `429 da API em ${path}. Ainda não existe cache disponível.`
+        );
+      }
+
+      throw error;
+    } finally {
+      pendingRequests.delete(cacheKey);
+    }
+  })();
+
+  pendingRequests.set(
+    cacheKey,
+    request
+  );
+
+  return request;
+}
+
+/*
+|--------------------------------------------------------------------------
+| ERROS
+|--------------------------------------------------------------------------
+*/
+
+function sendError(res, error) {
+  const status = error.status || 500;
+
+  const payload = {
+    error: error.message || "Erro interno",
+    status,
+    path: error.path || null,
+    details: error.data || null
+  };
+
+  if (error.retryAfter) {
+    payload.retryAfter = error.retryAfter;
+  }
+
+  res.status(status).json(payload);
+}
+
+/*
+|--------------------------------------------------------------------------
+| HEALTH
+|--------------------------------------------------------------------------
+*/
 
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
+
     service: "soccerplay",
+
     provider: "API Futebol - FutDev",
+
     apiConfigured: Boolean(API_KEY),
-    baseUrl: API_BASE
+
+    baseUrl: API_BASE,
+
+    cache: {
+      live: `${CACHE_TTL.live / 1000}s`,
+      today: `${CACHE_TTL.today / 1000}s`,
+      fixture: `${CACHE_TTL.fixture / 1000}s`
+    },
+
+    cachedItems: cache.size,
+
+    pendingRequests: pendingRequests.size
   });
 });
 
 /*
- * ------------------------------------------------------------
- * AO VIVO
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| AO VIVO
+|--------------------------------------------------------------------------
+*/
 
 app.get("/api/live", async (_req, res) => {
   try {
     let data;
 
     try {
-      data = await apiFetch("/partidas/ao-vivo");
-    } catch (error) {
-      if (error.status !== 404) {
-        throw error;
+      /*
+       Endpoint principal.
+      */
+
+      data = await cachedApiFetch(
+        "live",
+        "/partidas/ao-vivo",
+        CACHE_TTL.live
+      );
+    } catch (firstError) {
+      /*
+       Compatibilidade com o outro endpoint documentado
+       pela API Futebol.
+      */
+
+      if (firstError.status !== 404) {
+        throw firstError;
       }
 
-      data = await apiFetch("/ao-vivo");
+      data = await cachedApiFetch(
+        "live-fallback",
+        "/ao-vivo",
+        CACHE_TTL.live
+      );
     }
 
-    const response = normalizeResponse(data);
+    const response = normalizeMatches(data);
 
     res.json({
       response
@@ -634,55 +914,69 @@ app.get("/api/live", async (_req, res) => {
 });
 
 /*
- * ------------------------------------------------------------
- * JOGOS DE HOJE
- *
- * A API Futebol possui endpoints que podem variar conforme
- * o plano/versão. Tentamos os formatos disponíveis.
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| JOGOS DE HOJE
+|--------------------------------------------------------------------------
+*/
 
 app.get("/api/today", async (_req, res) => {
   try {
     let data = null;
 
-    const endpoints = [
+    /*
+     Tentativa 1
+    */
+
+    const todayEndpoints = [
       "/partidas",
       "/jogos",
       "/partidas/hoje"
     ];
 
-    for (const endpoint of endpoints) {
+    for (const endpoint of todayEndpoints) {
       try {
-        data = await apiFetch(endpoint);
+        data = await cachedApiFetch(
+          `today:${endpoint}`,
+          endpoint,
+          CACHE_TTL.today
+        );
+
         break;
       } catch (error) {
-        if (
-          error.status !== 404 &&
-          error.status !== 400
-        ) {
-          throw error;
+        if (error.status === 404) {
+          continue;
         }
+
+        throw error;
       }
     }
 
     /*
-     * Caso a conta/versão da API disponibilize somente
-     * partidas ao vivo, usamos esse retorno como fallback.
-     */
-    if (!data) {
+     Se a API não possuir endpoint específico de jogos,
+     usamos o endpoint de ao vivo como fallback.
+    */
+
+    if (data === null) {
       try {
-        data = await apiFetch("/partidas/ao-vivo");
-      } catch (error) {
-        if (error.status === 404) {
-          data = await apiFetch("/ao-vivo");
-        } else {
-          throw error;
+        data = await cachedApiFetch(
+          "today-live-fallback",
+          "/partidas/ao-vivo",
+          CACHE_TTL.today
+        );
+      } catch (firstError) {
+        if (firstError.status !== 404) {
+          throw firstError;
         }
+
+        data = await cachedApiFetch(
+          "today-live-fallback-2",
+          "/ao-vivo",
+          CACHE_TTL.today
+        );
       }
     }
 
-    const response = normalizeResponse(data);
+    const response = normalizeMatches(data);
 
     res.json({
       response
@@ -693,35 +987,42 @@ app.get("/api/today", async (_req, res) => {
 });
 
 /*
- * ------------------------------------------------------------
- * DETALHES DA PARTIDA
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| DETALHES DA PARTIDA
+|--------------------------------------------------------------------------
+*/
 
 app.get("/api/fixture/:id", async (req, res) => {
   try {
-    const id = encodeURIComponent(req.params.id);
+    const id = encodeURIComponent(
+      req.params.id
+    );
 
-    const data = await apiFetch(`/partidas/${id}`);
+    const data = await cachedApiFetch(
+      `fixture:${id}`,
+      `/partidas/${id}`,
+      CACHE_TTL.fixture
+    );
 
-    const list = arrayFrom(data);
+    let response = arrayFrom(data);
 
-    let response;
+    /*
+     Se a API retornar uma partida como objeto único,
+     transforma em lista de uma partida.
+    */
 
-    if (list.length) {
-      response = list.map((match, index) =>
-        normalizeMatch(match, index)
-      );
-    } else if (
+    if (
+      response.length === 0 &&
       data &&
       typeof data === "object"
     ) {
-      response = [
-        normalizeMatch(data, 0)
-      ];
-    } else {
-      response = [];
+      response = [data];
     }
+
+    response = response.map(
+      (item, index) =>
+        normalizeMatch(item, index)
+    );
 
     res.json({
       response
@@ -732,17 +1033,21 @@ app.get("/api/fixture/:id", async (req, res) => {
 });
 
 /*
- * ------------------------------------------------------------
- * TABELA
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| TABELA
+|--------------------------------------------------------------------------
+*/
 
 app.get("/api/standings/:id", async (req, res) => {
   try {
-    const id = encodeURIComponent(req.params.id);
+    const id = encodeURIComponent(
+      req.params.id
+    );
 
-    const data = await apiFetch(
-      `/campeonatos/${id}/tabela`
+    const data = await cachedApiFetch(
+      `standings:${id}`,
+      `/campeonatos/${id}/tabela`,
+      CACHE_TTL.standings
     );
 
     res.json({
@@ -754,14 +1059,18 @@ app.get("/api/standings/:id", async (req, res) => {
 });
 
 /*
- * ------------------------------------------------------------
- * CAMPEONATOS
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| CAMPEONATOS
+|--------------------------------------------------------------------------
+*/
 
 app.get("/api/leagues", async (_req, res) => {
   try {
-    const data = await apiFetch("/campeonatos");
+    const data = await cachedApiFetch(
+      "leagues",
+      "/campeonatos",
+      CACHE_TTL.leagues
+    );
 
     res.json({
       response: data
@@ -772,29 +1081,55 @@ app.get("/api/leagues", async (_req, res) => {
 });
 
 /*
- * ------------------------------------------------------------
- * ERROS
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| STATUS DO CACHE
+|--------------------------------------------------------------------------
+*/
 
-function sendError(res, error) {
-  console.error("SoccerPlay API error:", error);
+app.get("/api/cache", (_req, res) => {
+  const items = [];
 
-  res.status(error.status || 500).json({
-    error: error.message,
-    path: error.path || null,
-    details: error.data || null
+  for (const [key, value] of cache.entries()) {
+    const age = Date.now() - value.timestamp;
+
+    items.push({
+      key,
+
+      ageSeconds:
+        Math.round(age / 1000),
+
+      ttlSeconds:
+        Math.round(value.ttl / 1000),
+
+      fresh:
+        age < value.ttl
+    });
+  }
+
+  res.json({
+    cache: items,
+    pendingRequests: [
+      ...pendingRequests.keys()
+    ]
   });
-}
+});
 
 /*
- * ------------------------------------------------------------
- * START
- * ------------------------------------------------------------
- */
+|--------------------------------------------------------------------------
+| SERVIDOR
+|--------------------------------------------------------------------------
+*/
 
 app.listen(PORT, () => {
   console.log(
     `SoccerPlay backend rodando na porta ${PORT}`
+  );
+
+  console.log(
+    `API Futebol: ${API_BASE}`
+  );
+
+  console.log(
+    `API key configurada: ${Boolean(API_KEY)}`
   );
 });
