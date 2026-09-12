@@ -2,6 +2,9 @@ name: Build APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -20,20 +23,24 @@ jobs:
         working-directory: frontend
         run: npm install
 
-      - name: Configurar API
+      - name: Configurar endereço da API
         working-directory: frontend
         run: |
           echo "VITE_API_BASE=${{ secrets.API_BASE_URL }}" > .env.production
 
-      - name: Gerar frontend
+      - name: Compilar frontend
         working-directory: frontend
         run: npm run build
 
-      - name: Instalar Capacitor Android
+      - name: Instalar Capacitor
+        working-directory: frontend
+        run: npm install @capacitor/core @capacitor/cli @capacitor/android
+
+      - name: Criar projeto Android
         working-directory: frontend
         run: npx cap add android
 
-      - name: Sincronizar Capacitor
+      - name: Sincronizar Android
         working-directory: frontend
         run: npx cap sync android
 
@@ -46,7 +53,7 @@ jobs:
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Gerar APK
+      - name: Compilar APK
         working-directory: frontend/android
         run: ./gradlew assembleDebug
 
