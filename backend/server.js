@@ -143,7 +143,5 @@ app.get("/api/leagues", async (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(
-    `SoccerPlay backend rodando na porta ${PORT}`
-  );
+  console.log(`SoccerPlay backend rodando na porta ${PORT}`);
 });
