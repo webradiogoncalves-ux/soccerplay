@@ -34,7 +34,7 @@ jobs:
 
       - name: Instalar Capacitor
         working-directory: frontend
-        run: npm install @capacitor/core @capacitor/cli @capacitor/android
+        run: npm install @capacitor/core@7.4.3 @capacitor/cli@7.4.3 @capacitor/android@7.4.3
 
       - name: Criar projeto Android
         working-directory: frontend
