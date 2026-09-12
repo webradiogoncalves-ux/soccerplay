@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
@@ -11,10 +12,15 @@ const API_KEY = process.env.API_FOOTBALL_KEY;
 
 async function apiFetch(path) {
   if (!API_KEY) {
-    throw new Error("API_FOOTBALL_KEY não configurada no Render");
+    const error = new Error(
+      "API_FOOTBALL_KEY não configurada no Render"
+    );
+    error.status = 500;
+    throw error;
   }
 
   const response = await fetch(`${API_BASE}${path}`, {
+    method: "GET",
     headers: {
       Authorization: `Bearer ${API_KEY}`,
       Accept: "application/json"
@@ -23,10 +29,10 @@ async function apiFetch(path) {
 
   const text = await response.text();
 
-  let data;
+  let data = null;
 
   try {
-    data = JSON.parse(text);
+    data = text ? JSON.parse(text) : null;
   } catch {
     data = {
       raw: text
@@ -40,6 +46,7 @@ async function apiFetch(path) {
 
     error.status = response.status;
     error.data = data;
+    error.path = path;
 
     throw error;
   }
@@ -47,83 +54,97 @@ async function apiFetch(path) {
   return data;
 }
 
+function sendError(res, error) {
+  res.status(error.status || 500).json({
+    error: error.message,
+    path: error.path || null,
+    details: error.data || null
+  });
+}
+
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     service: "soccerplay",
-    apiConfigured: Boolean(API_KEY)
+    provider: "API Futebol - FutDev",
+    apiConfigured: Boolean(API_KEY),
+    baseUrl: API_BASE
   });
 });
 
 app.get("/api/live", async (_req, res) => {
   try {
+    try {
+      const data = await apiFetch("/partidas/ao-vivo");
+
+      return res.json({
+        response: data
+      });
+    } catch (firstError) {
+      if (firstError.status !== 404) {
+        throw firstError;
+      }
+    }
+
     const data = await apiFetch("/ao-vivo");
 
     res.json({
       response: data
     });
   } catch (error) {
-    res.status(error.status || 500).json({
-      error: error.message,
-      details: error.data || null
-    });
+    sendError(res, error);
   }
 });
 
-app.get("/api/today", async (req, res) => {
+app.get("/api/today", async (_req, res) => {
   try {
-    const date =
-      req.query.date ||
-      new Date().toLocaleDateString("en-CA", {
-        timeZone: "America/Sao_Paulo"
-      });
+    let data;
 
-    const data = await apiFetch(
-      `/partidas?data=${encodeURIComponent(date)}`
-    );
+    try {
+      data = await apiFetch("/partidas/ao-vivo");
+    } catch (firstError) {
+      if (firstError.status !== 404) {
+        throw firstError;
+      }
+
+      data = await apiFetch("/ao-vivo");
+    }
 
     res.json({
       response: data
     });
   } catch (error) {
-    res.status(error.status || 500).json({
-      error: error.message,
-      details: error.data || null
-    });
+    sendError(res, error);
   }
 });
 
 app.get("/api/fixture/:id", async (req, res) => {
   try {
-    const data = await apiFetch(
-      `/partidas/${encodeURIComponent(req.params.id)}`
-    );
+    const id = encodeURIComponent(req.params.id);
+
+    const data = await apiFetch(`/partidas/${id}`);
 
     res.json({
       response: data
     });
   } catch (error) {
-    res.status(error.status || 500).json({
-      error: error.message,
-      details: error.data || null
-    });
+    sendError(res, error);
   }
 });
 
 app.get("/api/standings/:id", async (req, res) => {
   try {
+    const id = encodeURIComponent(req.params.id);
+
     const data = await apiFetch(
-      `/campeonatos/${encodeURIComponent(req.params.id)}/tabela`
+      `/campeonatos/${id}/tabela`
     );
 
     res.json({
       response: data
     });
   } catch (error) {
-    res.status(error.status || 500).json({
-      error: error.message,
-      details: error.data || null
-    });
+    sendError(res, error);
   }
 });
 
@@ -135,13 +156,12 @@ app.get("/api/leagues", async (_req, res) => {
       response: data
     });
   } catch (error) {
-    res.status(error.status || 500).json({
-      error: error.message,
-      details: error.data || null
-    });
+    sendError(res, error);
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`SoccerPlay backend rodando na porta ${PORT}`);
+  console.log(
+    `SoccerPlay backend rodando na porta ${PORT}`
+  );
 });
