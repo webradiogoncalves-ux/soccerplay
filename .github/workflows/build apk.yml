@@ -1,1 +1,57 @@
+name: Build APK
 
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependências do frontend
+        working-directory: frontend
+        run: npm install
+
+      - name: Configurar API
+        working-directory: frontend
+        run: |
+          echo "VITE_API_BASE=${{ secrets.API_BASE_URL }}" > .env.production
+
+      - name: Gerar frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Instalar Capacitor Android
+        working-directory: frontend
+        run: npx cap add android
+
+      - name: Sincronizar Capacitor
+        working-directory: frontend
+        run: npx cap sync android
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gerar APK
+        working-directory: frontend/android
+        run: ./gradlew assembleDebug
+
+      - name: Enviar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoccerPlay-Lite-APK
+          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
