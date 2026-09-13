@@ -1128,8 +1128,3 @@ app.listen(PORT, () => {
   console.log(
     `API Futebol: ${API_BASE}`
   );
-
-  console.log(
-    `API key configurada: ${Boolean(API_KEY)}`
-  );
-});
