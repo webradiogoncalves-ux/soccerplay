@@ -4,7 +4,9 @@ import React, {
   useRef,
   useState
 } from "react";
+
 import { createRoot } from "react-dom/client";
+
 import {
   CalendarDays,
   ChevronLeft,
@@ -19,6 +21,7 @@ import {
   Trophy,
   X
 } from "lucide-react";
+
 import "./styles.css";
 
 const API =
@@ -42,20 +45,15 @@ const FINISHED_STATUSES = new Set([
 ]);
 
 async function getJSON(path) {
-  const response = await fetch(
-    `${API}${path}`,
-    {
-      cache: "no-store"
-    }
-  );
+  const response = await fetch(`${API}${path}`, {
+    cache: "no-store"
+  });
 
-  const data =
-    await response.json();
+  const data = await response.json();
 
   if (!response.ok) {
     throw new Error(
-      data?.error ||
-      `Erro ${response.status}`
+      data?.error || `Erro ${response.status}`
     );
   }
 
@@ -63,37 +61,25 @@ async function getJSON(path) {
 }
 
 function isLiveMatch(match) {
-  const status =
-    match
-      ?.fixture
-      ?.status
-      ?.short;
+  const status = String(
+    match?.fixture?.status?.short || ""
+  ).toUpperCase();
 
-  return LIVE_STATUSES.has(
-    String(status || "")
-      .toUpperCase()
-  );
+  return LIVE_STATUSES.has(status);
 }
 
 function isFinishedMatch(match) {
-  const status =
-    match
-      ?.fixture
-      ?.status
-      ?.short;
+  const status = String(
+    match?.fixture?.status?.short || ""
+  ).toUpperCase();
 
-  return FINISHED_STATUSES.has(
-    String(status || "")
-      .toUpperCase()
-  );
+  return FINISHED_STATUSES.has(status);
 }
 
 function scoreNumber(value) {
   const n = Number(value);
 
-  return Number.isFinite(n)
-    ? n
-    : 0;
+  return Number.isFinite(n) ? n : 0;
 }
 
 function localDateKey(date) {
@@ -102,25 +88,15 @@ function localDateKey(date) {
       ? date
       : new Date(date);
 
-  const formatter =
-    new Intl.DateTimeFormat(
-      "en-CA",
-      {
-        timeZone:
-          "America/Sao_Paulo",
-
-        year:
-          "numeric",
-
-        month:
-          "2-digit",
-
-        day:
-          "2-digit"
-      }
-    );
-
-  return formatter.format(d);
+  return new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }
+  ).format(d);
 }
 
 function formatTime(dateValue) {
@@ -144,12 +120,8 @@ function formatTime(dateValue) {
     {
       timeZone:
         "America/Sao_Paulo",
-
-      hour:
-        "2-digit",
-
-      minute:
-        "2-digit"
+      hour: "2-digit",
+      minute: "2-digit"
     }
   ).format(date);
 }
@@ -160,8 +132,7 @@ function statusLabel(match) {
       match
         ?.fixture
         ?.status
-        ?.short ||
-      ""
+        ?.short || ""
     ).toUpperCase();
 
   const elapsed =
@@ -193,7 +164,8 @@ function statusLabel(match) {
 
 function makeDays() {
   const result = [];
-  const today = new Date();
+  const today =
+    new Date();
 
   for (
     let offset = -3;
@@ -216,9 +188,7 @@ function makeDays() {
         new Intl.DateTimeFormat(
           "pt-BR",
           {
-            weekday:
-              "short",
-
+            weekday: "short",
             timeZone:
               "America/Sao_Paulo"
           }
@@ -231,9 +201,7 @@ function makeDays() {
         new Intl.DateTimeFormat(
           "pt-BR",
           {
-            day:
-              "2-digit",
-
+            day: "2-digit",
             timeZone:
               "America/Sao_Paulo"
           }
@@ -251,9 +219,7 @@ function dedupeMatches(matches) {
   return matches.filter(
     (match) => {
       const id =
-        match
-          ?.fixture
-          ?.id;
+        match?.fixture?.id;
 
       if (!id) {
         return true;
@@ -305,17 +271,16 @@ function groupByCompetition(
     const key =
       competitionKey(match);
 
-    if (!map.has(key)) {
-      map.set(
+    if (
+      !map.has(key)
+    ) {
+      map.set(key, {
         key,
-        {
-          key,
-          league:
-            match.league ||
-            {},
-          matches: []
-        }
-      );
+        league:
+          match.league ||
+          {},
+        matches: []
+      });
     }
 
     map
@@ -330,29 +295,30 @@ function groupByCompetition(
     (a, b) => {
       const countryCompare =
         String(
-          a.league?.country ||
-          ""
+          a.league
+            ?.country || ""
         ).localeCompare(
           String(
-            b.league?.country ||
-            ""
+            b.league
+              ?.country || ""
           ),
           "pt-BR"
         );
 
       if (
-        countryCompare !== 0
+        countryCompare !==
+        0
       ) {
         return countryCompare;
       }
 
       return String(
         a.league?.name ||
-        ""
+          ""
       ).localeCompare(
         String(
           b.league?.name ||
-          ""
+            ""
         ),
         "pt-BR"
       );
@@ -425,7 +391,9 @@ function findNamedArray(
   return null;
 }
 
-function extractStandings(data) {
+function extractStandings(
+  data
+) {
   if (
     Array.isArray(data)
   ) {
@@ -578,7 +546,7 @@ function GoalAlert({
         GOL DO{" "}
         {String(
           goal.team ||
-          "TIME"
+            "TIME"
         ).toUpperCase()}
       </div>
 
@@ -599,7 +567,8 @@ function GoalAlert({
 }
 
 function TeamLogo({
-  team
+  team,
+  size = 30
 }) {
   const [
     failed,
@@ -611,7 +580,21 @@ function TeamLogo({
     failed
   ) {
     return (
-      <span className="teamFallback">
+      <span
+        className="teamFallback"
+        style={{
+          width: size,
+          height: size,
+          display: "grid",
+          placeItems:
+            "center",
+          fontSize:
+            Math.max(
+              20,
+              size * 0.45
+            )
+        }}
+      >
         ⚽
       </span>
     );
@@ -624,6 +607,15 @@ function TeamLogo({
       onError={() =>
         setFailed(true)
       }
+      style={{
+        width: size,
+        height: size,
+        maxWidth: "100%",
+        objectFit:
+          "contain",
+        display:
+          "block"
+      }}
     />
   );
 }
@@ -902,7 +894,7 @@ function eventIcon(event) {
   const type =
     String(
       event?.type ||
-      ""
+        ""
     ).toLowerCase();
 
   if (
@@ -959,8 +951,7 @@ function Detail({
 
           <span
             style={{
-              width:
-                42
+              width: 42
             }}
           />
         </header>
@@ -968,6 +959,7 @@ function Detail({
         <main className="content">
           <div className="emptyState">
             <RefreshCw />
+
             <strong>
               Carregando partida...
             </strong>
@@ -996,8 +988,7 @@ function Detail({
 
           <span
             style={{
-              width:
-                42
+              width: 42
             }}
           />
         </header>
@@ -1045,10 +1036,8 @@ function Detail({
               "flex",
             alignItems:
               "center",
-            gap:
-              "8px",
-            minWidth:
-              0
+            gap: "8px",
+            minWidth: 0
           }}
         >
           {match
@@ -1062,10 +1051,8 @@ function Detail({
               }
               alt=""
               style={{
-                width:
-                  28,
-                height:
-                  28,
+                width: 28,
+                height: 28,
                 objectFit:
                   "contain"
               }}
@@ -1074,8 +1061,7 @@ function Detail({
 
           <div
             style={{
-              minWidth:
-                0
+              minWidth: 0
             }}
           >
             <small
@@ -1103,18 +1089,19 @@ function Detail({
 
         <span
           style={{
-            width:
-              42
+            width: 42
           }}
         />
       </header>
 
       <main className="content">
+
+        {/* PLACAR NOVO */}
         <section
           className="competitionCard"
           style={{
             padding:
-              "18px 14px",
+              "22px 10px",
             marginBottom:
               "12px"
           }}
@@ -1123,24 +1110,57 @@ function Detail({
             style={{
               display:
                 "grid",
+
               gridTemplateColumns:
-                "1fr auto 1fr",
+                "1fr 82px 1fr",
+
               alignItems:
-                "center",
+                "start",
+
               gap:
-                "10px",
+                "8px",
+
               textAlign:
                 "center"
             }}
           >
-            <div>
+
+            {/* MANDANTE */}
+            <div
+              style={{
+                display:
+                  "flex",
+
+                flexDirection:
+                  "column",
+
+                alignItems:
+                  "center",
+
+                justifyContent:
+                  "flex-start",
+
+                minWidth: 0
+              }}
+            >
               <div
                 style={{
+                  width:
+                    "108px",
+
                   height:
-                    72,
+                    "108px",
+
+                  maxWidth:
+                    "100%",
+
                   display:
-                    "grid",
-                  placeItems:
+                    "flex",
+
+                  alignItems:
+                    "center",
+
+                  justifyContent:
                     "center"
                 }}
               >
@@ -1150,10 +1170,40 @@ function Detail({
                       ?.teams
                       ?.home
                   }
+                  size={108}
                 />
               </div>
 
-              <strong>
+              <strong
+                style={{
+                  display:
+                    "block",
+
+                  width:
+                    "100%",
+
+                  marginTop:
+                    "10px",
+
+                  padding:
+                    "0 3px",
+
+                  fontSize:
+                    "15px",
+
+                  lineHeight:
+                    1.2,
+
+                  textAlign:
+                    "center",
+
+                  color:
+                    "#ffffff",
+
+                  overflowWrap:
+                    "anywhere"
+                }}
+              >
                 {match
                   ?.teams
                   ?.home
@@ -1162,13 +1212,41 @@ function Detail({
               </strong>
             </div>
 
-            <div>
+            {/* PLACAR CENTRAL */}
+            <div
+              style={{
+                minHeight:
+                  "108px",
+
+                display:
+                  "flex",
+
+                flexDirection:
+                  "column",
+
+                alignItems:
+                  "center",
+
+                justifyContent:
+                  "center"
+              }}
+            >
               <div
                 style={{
                   fontSize:
-                    "32px",
+                    "36px",
+
+                  lineHeight:
+                    1,
+
                   fontWeight:
-                    900
+                    900,
+
+                  color:
+                    "#ffffff",
+
+                  whiteSpace:
+                    "nowrap"
                 }}
               >
                 {scoreNumber(
@@ -1176,7 +1254,18 @@ function Detail({
                     ?.goals
                     ?.home
                 )}
-                {" : "}
+
+                <span
+                  style={{
+                    display:
+                      "inline-block",
+                    margin:
+                      "0 6px"
+                  }}
+                >
+                  :
+                </span>
+
                 {scoreNumber(
                   match
                     ?.goals
@@ -1186,12 +1275,21 @@ function Detail({
 
               <small
                 style={{
+                  display:
+                    "block",
+
+                  marginTop:
+                    "12px",
+
                   color:
                     isLiveMatch(
                       match
                     )
                       ? "#6ff083"
-                      : "#75867c"
+                      : "#75867c",
+
+                  fontSize:
+                    "15px"
                 }}
               >
                 {statusLabel(
@@ -1200,14 +1298,42 @@ function Detail({
               </small>
             </div>
 
-            <div>
+            {/* VISITANTE */}
+            <div
+              style={{
+                display:
+                  "flex",
+
+                flexDirection:
+                  "column",
+
+                alignItems:
+                  "center",
+
+                justifyContent:
+                  "flex-start",
+
+                minWidth: 0
+              }}
+            >
               <div
                 style={{
+                  width:
+                    "108px",
+
                   height:
-                    72,
+                    "108px",
+
+                  maxWidth:
+                    "100%",
+
                   display:
-                    "grid",
-                  placeItems:
+                    "flex",
+
+                  alignItems:
+                    "center",
+
+                  justifyContent:
                     "center"
                 }}
               >
@@ -1217,10 +1343,40 @@ function Detail({
                       ?.teams
                       ?.away
                   }
+                  size={108}
                 />
               </div>
 
-              <strong>
+              <strong
+                style={{
+                  display:
+                    "block",
+
+                  width:
+                    "100%",
+
+                  marginTop:
+                    "10px",
+
+                  padding:
+                    "0 3px",
+
+                  fontSize:
+                    "15px",
+
+                  lineHeight:
+                    1.2,
+
+                  textAlign:
+                    "center",
+
+                  color:
+                    "#ffffff",
+
+                  overflowWrap:
+                    "anywhere"
+                }}
+              >
                 {match
                   ?.teams
                   ?.away
@@ -1231,14 +1387,17 @@ function Detail({
           </div>
         </section>
 
+        {/* ABAS */}
         <div
           style={{
             display:
               "grid",
+
             gridTemplateColumns:
               "repeat(4,1fr)",
-            gap:
-              "5px",
+
+            gap: "5px",
+
             marginBottom:
               "12px"
           }}
@@ -1270,22 +1429,26 @@ function Detail({
                 style={{
                   minHeight:
                     "42px",
+
                   padding:
                     "6px 4px",
+
                   borderRadius:
                     "10px",
+
                   fontSize:
                     "9px",
+
                   fontWeight:
                     900,
+
                   color:
-                    tab ===
-                    key
+                    tab === key
                       ? "#07110c"
                       : "#829087",
+
                   background:
-                    tab ===
-                    key
+                    tab === key
                       ? "#75ea83"
                       : "#111c16"
                 }}
@@ -1318,20 +1481,23 @@ function Detail({
                   index
                 ) => (
                   <div
-                    key={
-                      index
-                    }
+                    key={index}
                     style={{
                       display:
                         "grid",
+
                       gridTemplateColumns:
                         "45px 28px 1fr",
+
                       gap:
                         "8px",
+
                       alignItems:
                         "center",
+
                       padding:
                         "11px 14px",
+
                       borderTop:
                         "1px solid rgba(255,255,255,.04)"
                     }}
@@ -1340,8 +1506,10 @@ function Detail({
                       style={{
                         color:
                           "#7b8a81",
+
                         fontSize:
                           "12px",
+
                         fontWeight:
                           800
                       }}
@@ -1381,13 +1549,17 @@ function Detail({
                           style={{
                             display:
                               "block",
+
                             marginTop:
                               "2px",
+
                             color:
                               "#6d7c73"
                           }}
                         >
-                          {event.detail}
+                          {
+                            event.detail
+                          }
                         </small>
                       )}
                     </div>
@@ -1410,6 +1582,7 @@ function Detail({
             <strong>
               FORMAÇÕES
             </strong>
+
             <span>
               A BSD não enviou formações para esta partida.
             </span>
@@ -1422,6 +1595,7 @@ function Detail({
             <strong>
               H2H
             </strong>
+
             <span>
               Confrontos diretos não disponíveis nesta partida.
             </span>
@@ -1434,6 +1608,7 @@ function Detail({
             {standingsLoading ? (
               <div className="emptyState">
                 <RefreshCw />
+
                 <strong>
                   Carregando classificação...
                 </strong>
@@ -1445,27 +1620,36 @@ function Detail({
                   style={{
                     display:
                       "grid",
+
                     gridTemplateColumns:
                       "28px 1fr 34px 34px",
+
                     gap:
                       "5px",
+
                     padding:
                       "11px 12px",
+
                     color:
                       "#718078",
+
                     fontSize:
                       "10px",
+
                     fontWeight:
                       900
                   }}
                 >
                   <span>#</span>
+
                   <span>
                     TIME
                   </span>
+
                   <span>
                     J
                   </span>
+
                   <span>
                     PTS
                   </span>
@@ -1478,14 +1662,19 @@ function Detail({
                       style={{
                         display:
                           "grid",
+
                         gridTemplateColumns:
                           "28px 1fr 34px 34px",
+
                         gap:
                           "5px",
+
                         alignItems:
                           "center",
+
                         padding:
                           "11px 12px",
+
                         borderTop:
                           "1px solid rgba(255,255,255,.04)"
                       }}
@@ -1500,10 +1689,13 @@ function Detail({
                         style={{
                           display:
                             "flex",
+
                           alignItems:
                             "center",
+
                           gap:
                             "7px",
+
                           minWidth:
                             0
                         }}
@@ -1517,8 +1709,10 @@ function Detail({
                             style={{
                               width:
                                 22,
+
                               height:
                                 22,
+
                               objectFit:
                                 "contain"
                             }}
@@ -1529,10 +1723,13 @@ function Detail({
                           style={{
                             overflow:
                               "hidden",
+
                             textOverflow:
                               "ellipsis",
+
                             whiteSpace:
                               "nowrap",
+
                             fontSize:
                               "12px"
                           }}
@@ -1651,7 +1848,9 @@ function App() {
   const [
     activeNav,
     setActiveNav
-  ] = useState("today");
+  ] = useState(
+    "today"
+  );
 
   const [
     goalAlert,
@@ -1800,8 +1999,7 @@ function App() {
         String(
           match
             ?.fixture
-            ?.id ||
-          ""
+            ?.id || ""
         );
 
       if (!id) {
@@ -1986,6 +2184,7 @@ function App() {
     try {
       localStorage.setItem(
         "soccerplay:favs",
+
         JSON.stringify(
           Array.from(
             favorites
@@ -1993,9 +2192,11 @@ function App() {
         )
       );
     } catch {
-      //
+      // nada
     }
-  }, [favorites]);
+  }, [
+    favorites
+  ]);
 
   async function openMatch(
     match
@@ -2009,21 +2210,15 @@ function App() {
       return;
     }
 
-    setSelectedId(
-      id
-    );
+    setSelectedId(id);
 
-    setDetail(
-      match
-    );
+    setDetail(match);
 
     setLoadingDetail(
       true
     );
 
-    setStandings(
-      null
-    );
+    setStandings(null);
 
     try {
       if (
@@ -2032,9 +2227,7 @@ function App() {
             "serie-d-"
           )
       ) {
-        setDetail(
-          match
-        );
+        setDetail(match);
       } else {
         const data =
           await getJSON(
@@ -2052,9 +2245,7 @@ function App() {
         }
       }
     } catch {
-      setDetail(
-        match
-      );
+      setDetail(match);
     } finally {
       setLoadingDetail(
         false
@@ -2090,12 +2281,10 @@ function App() {
 
       setStandings(
         table?.response ??
-        table
+          table
       );
     } catch {
-      setStandings(
-        null
-      );
+      setStandings(null);
     } finally {
       setStandingsLoading(
         false
@@ -2126,13 +2315,9 @@ function App() {
         if (
           next.has(key)
         ) {
-          next.delete(
-            key
-          );
+          next.delete(key);
         } else {
-          next.add(
-            key
-          );
+          next.add(key);
         }
 
         return next;
@@ -2237,13 +2422,16 @@ function App() {
                   ?.teams
                   ?.home
                   ?.name,
+
                 match
                   ?.teams
                   ?.away
                   ?.name,
+
                 match
                   ?.league
                   ?.name,
+
                 match
                   ?.league
                   ?.country
@@ -2327,9 +2515,11 @@ function App() {
           setSelectedId(
             null
           );
+
           setDetail(
             null
           );
+
           setStandings(
             null
           );
@@ -2381,6 +2571,7 @@ function App() {
       </header>
 
       <main className="content homeContent">
+
         <div className="searchBox">
           <Search
             size={18}
@@ -2428,6 +2619,7 @@ function App() {
                   setSelectedDate(
                     day.key
                   );
+
                   setActiveNav(
                     "today"
                   );
@@ -2480,6 +2672,7 @@ function App() {
         {loading ? (
           <div className="emptyState">
             <RefreshCw />
+
             <strong>
               Carregando jogos...
             </strong>
@@ -2499,6 +2692,7 @@ function App() {
           </div>
         ) : (
           <div className="competitionsList">
+
             <div className="listTitle">
               <div>
                 <ListFilter
