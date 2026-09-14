@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   CalendarDays,
@@ -36,16 +36,12 @@ const FINISHED_STATUSES = new Set([
 ]);
 
 async function getJSON(path) {
-  const response = await fetch(
-    `${API}${path}`
-  );
-
+  const response = await fetch(`${API}${path}`);
   const data = await response.json();
 
   if (!response.ok) {
     throw new Error(
-      data?.error ||
-        "Erro ao consultar o servidor"
+      data?.error || "Erro ao consultar o servidor"
     );
   }
 
@@ -64,19 +60,20 @@ function isFinishedMatch(match) {
   );
 }
 
+function scoreNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
 function formatTime(date) {
   if (!date) return "";
 
   try {
-    return new Intl.DateTimeFormat(
-      "pt-BR",
-      {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone:
-          "America/Sao_Paulo",
-      }
-    ).format(new Date(date));
+    return new Intl.DateTimeFormat("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "America/Sao_Paulo",
+    }).format(new Date(date));
   } catch {
     return "";
   }
@@ -84,27 +81,20 @@ function formatTime(date) {
 
 function localDateKey(date) {
   try {
-    return new Intl.DateTimeFormat(
-      "en-CA",
-      {
-        timeZone:
-          "America/Sao_Paulo",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }
-    ).format(new Date(date));
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(date));
   } catch {
     return "";
   }
 }
 
 function statusLabel(match) {
-  const status =
-    match?.fixture?.status?.short;
-
-  const elapsed =
-    match?.fixture?.status?.elapsed;
+  const status = match?.fixture?.status?.short;
+  const elapsed = match?.fixture?.status?.elapsed;
 
   if (isLiveMatch(match)) {
     return elapsed
@@ -116,86 +106,61 @@ function statusLabel(match) {
     return "ENCERRADO";
   }
 
-  if (status === "PST") {
-    return "ADIADO";
-  }
-
-  if (status === "CANC") {
-    return "CANCELADO";
-  }
-
-  if (status === "SUSP") {
-    return "SUSPENSO";
-  }
+  if (status === "PST") return "ADIADO";
+  if (status === "CANC") return "CANCELADO";
+  if (status === "SUSP") return "SUSPENSO";
 
   return (
-    formatTime(
-      match?.fixture?.date
-    ) || "A DEFINIR"
+    formatTime(match?.fixture?.date) ||
+    "A DEFINIR"
   );
 }
 
 function makeDays() {
   const today = new Date();
 
-  return Array.from(
-    { length: 7 },
-    (_, index) => {
-      const date = new Date(today);
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
 
-      date.setDate(
-        today.getDate() +
-          index -
-          3
-      );
+    date.setDate(
+      today.getDate() + index - 3
+    );
 
-      return {
-        key: localDateKey(date),
+    return {
+      key: localDateKey(date),
 
-        weekday:
-          new Intl.DateTimeFormat(
-            "pt-BR",
-            {
-              weekday: "short",
-              timeZone:
-                "America/Sao_Paulo",
-            }
-          )
-            .format(date)
-            .replace(".", "")
-            .toUpperCase(),
+      weekday: new Intl.DateTimeFormat(
+        "pt-BR",
+        {
+          weekday: "short",
+          timeZone: "America/Sao_Paulo",
+        }
+      )
+        .format(date)
+        .replace(".", "")
+        .toUpperCase(),
 
-        day:
-          new Intl.DateTimeFormat(
-            "pt-BR",
-            {
-              day: "2-digit",
-              timeZone:
-                "America/Sao_Paulo",
-            }
-          ).format(date),
+      day: new Intl.DateTimeFormat(
+        "pt-BR",
+        {
+          day: "2-digit",
+          timeZone: "America/Sao_Paulo",
+        }
+      ).format(date),
 
-        today: index === 3,
-      };
-    }
-  );
+      today: index === 3,
+    };
+  });
 }
 
 function dedupeMatches(matches) {
   const map = new Map();
 
   matches.forEach((match) => {
-    const id =
-      match?.fixture?.id;
+    const id = match?.fixture?.id;
 
-    if (
-      id !== undefined &&
-      id !== null
-    ) {
-      map.set(
-        String(id),
-        match
-      );
+    if (id !== undefined && id !== null) {
+      map.set(String(id), match);
     }
   });
 
@@ -204,8 +169,7 @@ function dedupeMatches(matches) {
 
 function competitionKey(match) {
   return `${
-    match?.league?.country ||
-    "Outros"
+    match?.league?.country || "Outros"
   }::${
     match?.league?.id ||
     match?.league?.name ||
@@ -213,43 +177,29 @@ function competitionKey(match) {
   }`;
 }
 
-function groupByCompetition(
-  matches
-) {
+function groupByCompetition(matches) {
   const groups = new Map();
 
   matches.forEach((match) => {
-    const key =
-      competitionKey(match);
+    const key = competitionKey(match);
 
     if (!groups.has(key)) {
       groups.set(key, {
         key,
-
         country:
-          match?.league?.country ||
-          "Outros",
-
+          match?.league?.country || "Outros",
         name:
-          match?.league?.name ||
-          "Futebol",
-
+          match?.league?.name || "Futebol",
         logo:
-          match?.league?.logo ||
-          null,
-
+          match?.league?.logo || null,
         matches: [],
       });
     }
 
-    groups
-      .get(key)
-      .matches.push(match);
+    groups.get(key).matches.push(match);
   });
 
-  return [
-    ...groups.values(),
-  ].sort((a, b) => {
+  return [...groups.values()].sort((a, b) => {
     const aBrazil =
       a.country === "Brasil" ||
       a.country === "Brazil"
@@ -273,23 +223,75 @@ function groupByCompetition(
   });
 }
 
+function GoalAlert({ alert }) {
+  if (!alert) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 18,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 99999,
+        width: "calc(100% - 28px)",
+        maxWidth: 430,
+        background:
+          "linear-gradient(135deg,#0b2113,#143d20)",
+        border: "2px solid #59ff7a",
+        borderRadius: 18,
+        boxShadow:
+          "0 12px 35px rgba(0,0,0,.55)",
+        padding: "15px 16px",
+        textAlign: "center",
+        color: "#fff",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 900,
+          color: "#59ff7a",
+          letterSpacing: 1.5,
+          marginBottom: 4,
+        }}
+      >
+        ⚽ GOOOOOOOOOOL!
+      </div>
+
+      <div
+        style={{
+          fontSize: 20,
+          fontWeight: 950,
+        }}
+      >
+        {alert.team}
+      </div>
+
+      <div
+        style={{
+          fontSize: 18,
+          fontWeight: 900,
+          marginTop: 5,
+        }}
+      >
+        {alert.score}
+      </div>
+    </div>
+  );
+}
+
 function MatchRow({
   match,
   favorite,
   onFavorite,
   onOpen,
 }) {
-  const live =
-    isLiveMatch(match);
+  const live = isLiveMatch(match);
+  const finished = isFinishedMatch(match);
 
-  const finished =
-    isFinishedMatch(match);
-
-  const homeScore =
-    match?.goals?.home;
-
-  const awayScore =
-    match?.goals?.away;
+  const homeScore = match?.goals?.home;
+  const awayScore = match?.goals?.away;
 
   const showScore =
     live ||
@@ -300,11 +302,7 @@ function MatchRow({
   return (
     <div
       className="matchRow"
-      onClick={() =>
-        onOpen(
-          match.fixture.id
-        )
-      }
+      onClick={() => onOpen(match.fixture.id)}
     >
       <div
         className={`matchState ${
@@ -320,13 +318,9 @@ function MatchRow({
 
       <div className="matchTeams">
         <div className="teamLine">
-          {match?.teams?.home
-            ?.logo ? (
+          {match?.teams?.home?.logo ? (
             <img
-              src={
-                match.teams.home
-                  .logo
-              }
+              src={match.teams.home.logo}
               alt=""
             />
           ) : (
@@ -336,26 +330,19 @@ function MatchRow({
           )}
 
           <span>
-            {match?.teams?.home
-              ?.name ||
+            {match?.teams?.home?.name ||
               "Mandante"}
           </span>
 
           {showScore && (
-            <b>
-              {homeScore ?? 0}
-            </b>
+            <b>{homeScore ?? 0}</b>
           )}
         </div>
 
         <div className="teamLine">
-          {match?.teams?.away
-            ?.logo ? (
+          {match?.teams?.away?.logo ? (
             <img
-              src={
-                match.teams.away
-                  .logo
-              }
+              src={match.teams.away.logo}
               alt=""
             />
           ) : (
@@ -365,31 +352,24 @@ function MatchRow({
           )}
 
           <span>
-            {match?.teams?.away
-              ?.name ||
+            {match?.teams?.away?.name ||
               "Visitante"}
           </span>
 
           {showScore && (
-            <b>
-              {awayScore ?? 0}
-            </b>
+            <b>{awayScore ?? 0}</b>
           )}
         </div>
       </div>
 
       <button
         className={`favoriteButton ${
-          favorite
-            ? "selected"
-            : ""
+          favorite ? "selected" : ""
         }`}
         onClick={(event) => {
           event.stopPropagation();
-
           onFavorite(match);
         }}
-        aria-label="Favoritar partida"
       >
         <Star
           size={18}
@@ -413,9 +393,7 @@ function CompetitionCard({
   onToggle,
 }) {
   const liveCount =
-    group.matches.filter(
-      isLiveMatch
-    ).length;
+    group.matches.filter(isLiveMatch).length;
 
   return (
     <section className="competitionCard">
@@ -426,10 +404,7 @@ function CompetitionCard({
         <div className="competitionIdentity">
           <div className="competitionLogo">
             {group.logo ? (
-              <img
-                src={group.logo}
-                alt=""
-              />
+              <img src={group.logo} alt="" />
             ) : (
               <Trophy size={20} />
             )}
@@ -440,9 +415,7 @@ function CompetitionCard({
               {group.country}
             </span>
 
-            <strong>
-              {group.name}
-            </strong>
+            <strong>{group.name}</strong>
           </div>
         </div>
 
@@ -454,17 +427,12 @@ function CompetitionCard({
           )}
 
           <span className="gameCount">
-            {
-              group.matches
-                .length
-            }
+            {group.matches.length}
           </span>
 
           <ChevronRight
             className={
-              expanded
-                ? "rotate"
-                : ""
+              expanded ? "rotate" : ""
             }
             size={18}
           />
@@ -477,28 +445,17 @@ function CompetitionCard({
             .slice()
             .sort(
               (a, b) =>
-                new Date(
-                  a.fixture.date
-                ) -
-                new Date(
-                  b.fixture.date
-                )
+                new Date(a.fixture.date) -
+                new Date(b.fixture.date)
             )
             .map((match) => (
               <MatchRow
-                key={
-                  match.fixture.id
-                }
+                key={match.fixture.id}
                 match={match}
                 favorite={favorites.includes(
-                  String(
-                    match.fixture
-                      .id
-                  )
+                  String(match.fixture.id)
                 )}
-                onFavorite={
-                  onFavorite
-                }
+                onFavorite={onFavorite}
                 onOpen={onOpen}
               />
             ))}
@@ -533,9 +490,7 @@ function eventIcon(event) {
 
   if (
     type.includes("subst") ||
-    type.includes(
-      "substitution"
-    ) ||
+    type.includes("substitution") ||
     detail.includes("subst")
   ) {
     return "🔄";
@@ -544,38 +499,27 @@ function eventIcon(event) {
   return "•";
 }
 
-function findArray(
-  value,
-  keys = []
-) {
-  if (!value) return [];
-
-  if (Array.isArray(value)) {
-    return value;
-  }
-
+function findNamedArray(value, keys = []) {
   if (
+    !value ||
     typeof value !== "object"
   ) {
     return [];
   }
 
   for (const key of keys) {
-    if (
-      Array.isArray(value[key])
-    ) {
+    if (Array.isArray(value[key])) {
       return value[key];
     }
   }
 
-  for (const child of Object.values(
-    value
-  )) {
+  for (const child of Object.values(value)) {
     if (
       child &&
-      typeof child === "object"
+      typeof child === "object" &&
+      !Array.isArray(child)
     ) {
-      const found = findArray(
+      const found = findNamedArray(
         child,
         keys
       );
@@ -589,10 +533,62 @@ function findArray(
   return [];
 }
 
-function normalizeStandingRow(
-  row,
-  index
-) {
+function extractStandings(value) {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    if (
+      value.length &&
+      Array.isArray(value[0])
+    ) {
+      return value[0];
+    }
+
+    return value;
+  }
+
+  if (typeof value !== "object") {
+    return [];
+  }
+
+  for (const key of [
+    "standings",
+    "classification",
+    "classificacao",
+    "table",
+    "response",
+    "data",
+  ]) {
+    const child = value[key];
+
+    if (Array.isArray(child)) {
+      if (
+        child.length &&
+        Array.isArray(child[0])
+      ) {
+        return child[0];
+      }
+
+      return child;
+    }
+
+    if (
+      child &&
+      typeof child === "object"
+    ) {
+      const nested =
+        extractStandings(child);
+
+      if (nested.length) {
+        return nested;
+      }
+    }
+  }
+
+  return [];
+}
+
+function normalizeStandingRow(row, index) {
   const team =
     row?.team ||
     row?.club ||
@@ -627,7 +623,6 @@ function normalizeStandingRow(
       row?.points ??
       row?.pts ??
       row?.pontos ??
-      row?.point ??
       "-",
 
     played:
@@ -635,7 +630,6 @@ function normalizeStandingRow(
       row?.played ??
       row?.games ??
       row?.jogos ??
-      row?.partidas ??
       "-",
 
     wins:
@@ -661,16 +655,13 @@ function normalizeStandingRow(
 function Detail({
   match,
   onClose,
+  goalAlert,
 }) {
-  const [
-    activeTab,
-    setActiveTab,
-  ] = useState("summary");
+  const [activeTab, setActiveTab] =
+    useState("summary");
 
-  const [
-    standings,
-    setStandings,
-  ] = useState([]);
+  const [standings, setStandings] =
+    useState([]);
 
   const [
     standingsLoading,
@@ -688,7 +679,7 @@ function Detail({
     ? match.events
     : [];
 
-  const lineups = findArray(
+  const lineups = findNamedArray(
     match,
     [
       "lineups",
@@ -697,17 +688,17 @@ function Detail({
     ]
   );
 
-  const h2h = findArray(match, [
-    "h2h",
-    "head_to_head",
-    "confrontos",
-  ]);
+  const h2h = findNamedArray(
+    match,
+    [
+      "h2h",
+      "head_to_head",
+      "confrontos",
+    ]
+  );
 
   useEffect(() => {
-    if (
-      activeTab !==
-      "standings"
-    ) {
+    if (activeTab !== "standings") {
       return;
     }
 
@@ -718,7 +709,6 @@ function Detail({
       setStandingsError(
         "Classificação indisponível para esta competição."
       );
-
       return;
     }
 
@@ -726,33 +716,21 @@ function Detail({
 
     async function loadStandings() {
       setStandingsLoading(true);
-
       setStandingsError("");
 
       try {
         const standingsPath =
-          String(
-            leagueId
-          ).startsWith(
+          String(leagueId).startsWith(
             "serie-d"
           )
             ? "/standings/serie-d"
             : `/standings/${leagueId}`;
 
         const data =
-          await getJSON(
-            standingsPath
-          );
+          await getJSON(standingsPath);
 
         const rows =
-          findArray(data, [
-            "standings",
-            "classification",
-            "classificacao",
-            "table",
-            "response",
-            "data",
-          ]);
+          extractStandings(data);
 
         if (!cancelled) {
           setStandings(
@@ -760,8 +738,7 @@ function Detail({
               .filter(
                 (row) =>
                   row &&
-                  typeof row ===
-                    "object"
+                  typeof row === "object"
               )
               .map(
                 normalizeStandingRow
@@ -777,9 +754,7 @@ function Detail({
         }
       } finally {
         if (!cancelled) {
-          setStandingsLoading(
-            false
-          );
+          setStandingsLoading(false);
         }
       }
     }
@@ -809,13 +784,14 @@ function Detail({
     },
     {
       id: "standings",
-      label:
-        "CLASSIFICAÇÃO",
+      label: "CLASSIFICAÇÃO",
     },
   ];
 
   return (
     <div className="app detailPage">
+      <GoalAlert alert={goalAlert} />
+
       <header className="detailHeader">
         <button
           className="roundButton"
@@ -826,14 +802,12 @@ function Detail({
 
         <div>
           <span>
-            {match?.league
-              ?.country ||
+            {match?.league?.country ||
               "Futebol"}
           </span>
 
           <strong>
-            {match?.league
-              ?.name ||
+            {match?.league?.name ||
               "Partida"}
           </strong>
         </div>
@@ -844,12 +818,10 @@ function Detail({
       <main className="content">
         <section className="scoreCard">
           <div className="detailTeam">
-            {match?.teams?.home
-              ?.logo ? (
+            {match?.teams?.home?.logo ? (
               <img
                 src={
-                  match.teams
-                    .home.logo
+                  match.teams.home.logo
                 }
                 alt=""
               />
@@ -865,8 +837,7 @@ function Detail({
             )}
 
             <b>
-              {match?.teams?.home
-                ?.name ||
+              {match?.teams?.home?.name ||
                 "Mandante"}
             </b>
           </div>
@@ -883,26 +854,17 @@ function Detail({
             </span>
 
             <strong>
-              {match?.goals
-                ?.home ?? 0}
-
-              <small>
-                {" "}
-                x{" "}
-              </small>
-
-              {match?.goals
-                ?.away ?? 0}
+              {match?.goals?.home ?? 0}
+              <small> x </small>
+              {match?.goals?.away ?? 0}
             </strong>
           </div>
 
           <div className="detailTeam">
-            {match?.teams?.away
-              ?.logo ? (
+            {match?.teams?.away?.logo ? (
               <img
                 src={
-                  match.teams
-                    .away.logo
+                  match.teams.away.logo
                 }
                 alt=""
               />
@@ -918,8 +880,7 @@ function Detail({
             )}
 
             <b>
-              {match?.teams?.away
-                ?.name ||
+              {match?.teams?.away?.name ||
                 "Visitante"}
             </b>
           </div>
@@ -930,88 +891,60 @@ function Detail({
             display: "flex",
             gap: 6,
             overflowX: "auto",
-            padding:
-              "4px 0 10px",
+            padding: "4px 0 10px",
             marginBottom: 6,
           }}
         >
-          {tabs.map(
-            (item) => (
-              <button
-                key={item.id}
-                onClick={() =>
-                  setActiveTab(
-                    item.id
-                  )
-                }
-                style={{
-                  border: 0,
-
-                  borderBottom:
-                    activeTab ===
-                    item.id
-                      ? "3px solid #59ff7a"
-                      : "3px solid transparent",
-
-                  background:
-                    "transparent",
-
-                  color:
-                    activeTab ===
-                    item.id
-                      ? "#ffffff"
-                      : "#8f9c95",
-
-                  fontWeight:
-                    800,
-
-                  fontSize: 12,
-
-                  whiteSpace:
-                    "nowrap",
-
-                  padding:
-                    "12px 10px 9px",
-
-                  cursor:
-                    "pointer",
-                }}
-              >
-                {item.label}
-              </button>
-            )
-          )}
+          {tabs.map((item) => (
+            <button
+              key={item.id}
+              onClick={() =>
+                setActiveTab(item.id)
+              }
+              style={{
+                border: 0,
+                borderBottom:
+                  activeTab === item.id
+                    ? "3px solid #59ff7a"
+                    : "3px solid transparent",
+                background:
+                  "transparent",
+                color:
+                  activeTab === item.id
+                    ? "#ffffff"
+                    : "#8f9c95",
+                fontWeight: 800,
+                fontSize: 12,
+                whiteSpace: "nowrap",
+                padding:
+                  "12px 10px 9px",
+                cursor: "pointer",
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
 
-        {activeTab ===
-          "summary" && (
+        {activeTab === "summary" && (
           <section className="detailPanel">
-            <h2>
-              Sumário da
-              partida
-            </h2>
+            <h2>Sumário da partida</h2>
 
-            {events.length ===
-            0 ? (
+            {events.length === 0 ? (
               <p className="muted">
                 A fonte não
-                disponibilizou
-                eventos
-                detalhados para
-                esta partida.
+                disponibilizou eventos
+                detalhados para esta
+                partida.
               </p>
             ) : (
               events.map(
-                (
-                  event,
-                  index
-                ) => (
+                (event, index) => (
                   <div
                     className="eventItem"
                     key={`${
                       event?.time
-                        ?.elapsed ||
-                      0
+                        ?.elapsed || 0
                     }-${index}`}
                   >
                     <b>
@@ -1022,16 +955,13 @@ function Detail({
                     </b>
 
                     <span>
-                      {eventIcon(
-                        event
-                      )}
+                      {eventIcon(event)}
                     </span>
 
                     <div>
                       <strong>
                         {event?.team
-                          ?.name ||
-                          ""}
+                          ?.name || ""}
                       </strong>
 
                       <small>
@@ -1051,35 +981,25 @@ function Detail({
           </section>
         )}
 
-        {activeTab ===
-          "lineups" && (
+        {activeTab === "lineups" && (
           <section className="detailPanel">
-            <h2>
-              Formações
-            </h2>
+            <h2>Formações</h2>
 
-            {lineups.length ===
-            0 ? (
+            {lineups.length === 0 ? (
               <p className="muted">
                 A fonte não
-                disponibilizou
-                escalações ou
-                formações para
-                esta partida.
+                disponibilizou escalações
+                ou formações para esta
+                partida.
               </p>
             ) : (
               lineups.map(
-                (
-                  item,
-                  index
-                ) => (
+                (item, index) => (
                   <div
                     className="eventItem"
                     key={index}
                   >
-                    <span>
-                      👥
-                    </span>
+                    <span>👥</span>
 
                     <div>
                       <strong>
@@ -1088,8 +1008,7 @@ function Detail({
                           item?.name ||
                           item?.team_name ||
                           `Formação ${
-                            index +
-                            1
+                            index + 1
                           }`}
                       </strong>
 
@@ -1106,44 +1025,33 @@ function Detail({
           </section>
         )}
 
-        {activeTab ===
-          "h2h" && (
+        {activeTab === "h2h" && (
           <section className="detailPanel">
             <h2>
-              Confrontos
-              diretos
+              Confrontos diretos
             </h2>
 
-            {h2h.length ===
-            0 ? (
+            {h2h.length === 0 ? (
               <p className="muted">
                 A fonte não
-                disponibilizou
-                histórico de
-                confrontos para
-                esta partida.
+                disponibilizou histórico
+                de confrontos para esta
+                partida.
               </p>
             ) : (
               h2h.map(
-                (
-                  item,
-                  index
-                ) => (
+                (item, index) => (
                   <div
                     className="eventItem"
                     key={index}
                   >
-                    <span>
-                      ⚽
-                    </span>
+                    <span>⚽</span>
 
                     <div>
                       <strong>
-                        {item?.home
-                          ?.name ||
+                        {item?.home?.name ||
                           item?.teams
-                            ?.home
-                            ?.name ||
+                            ?.home?.name ||
                           item?.home_name ||
                           "Mandante"}{" "}
                         {item?.goals
@@ -1155,11 +1063,9 @@ function Detail({
                           ?.away ??
                           item?.away_score ??
                           "-"}{" "}
-                        {item?.away
-                          ?.name ||
+                        {item?.away?.name ||
                           item?.teams
-                            ?.away
-                            ?.name ||
+                            ?.away?.name ||
                           item?.away_name ||
                           "Visitante"}
                       </strong>
@@ -1182,14 +1088,11 @@ function Detail({
         {activeTab ===
           "standings" && (
           <section className="detailPanel">
-            <h2>
-              Classificação
-            </h2>
+            <h2>Classificação</h2>
 
             {standingsLoading && (
               <p className="muted">
-                Carregando
-                classificação
+                Carregando classificação
                 real...
               </p>
             )}
@@ -1197,9 +1100,7 @@ function Detail({
             {!standingsLoading &&
               standingsError && (
                 <p className="muted">
-                  {
-                    standingsError
-                  }
+                  {standingsError}
                 </p>
               )}
 
@@ -1210,120 +1111,70 @@ function Detail({
                 <p className="muted">
                   A fonte não
                   disponibilizou
-                  classificação
-                  para esta
+                  classificação para esta
                   competição.
                 </p>
               )}
 
             {!standingsLoading &&
-              standings.length >
-                0 && (
+              standings.length > 0 && (
                 <div
                   style={{
-                    overflowX:
-                      "auto",
+                    overflowX: "auto",
                   }}
                 >
                   <div
                     style={{
-                      minWidth:
-                        520,
-
-                      display:
-                        "grid",
-
+                      minWidth: 520,
+                      display: "grid",
                       gridTemplateColumns:
                         "34px minmax(150px,1fr) 44px 44px 44px 44px 54px",
-
                       gap: 6,
-
-                      padding:
-                        "8px 6px",
-
-                      fontSize:
-                        11,
-
-                      fontWeight:
-                        800,
-
-                      color:
-                        "#87958e",
+                      padding: "8px 6px",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: "#87958e",
                     }}
                   >
-                    <span>
-                      #
-                    </span>
-                    <span>
-                      TIME
-                    </span>
-                    <span>
-                      J
-                    </span>
-                    <span>
-                      V
-                    </span>
-                    <span>
-                      E
-                    </span>
-                    <span>
-                      D
-                    </span>
-                    <span>
-                      PTS
-                    </span>
+                    <span>#</span>
+                    <span>TIME</span>
+                    <span>J</span>
+                    <span>V</span>
+                    <span>E</span>
+                    <span>D</span>
+                    <span>PTS</span>
                   </div>
 
                   {standings.map(
-                    (
-                      row,
-                      index
-                    ) => (
+                    (row, index) => (
                       <div
                         key={`${row.teamName}-${index}`}
                         style={{
-                          minWidth:
-                            520,
-
-                          display:
-                            "grid",
-
+                          minWidth: 520,
+                          display: "grid",
                           gridTemplateColumns:
                             "34px minmax(150px,1fr) 44px 44px 44px 44px 54px",
-
                           gap: 6,
-
                           alignItems:
                             "center",
-
                           padding:
                             "10px 6px",
-
                           borderTop:
                             "1px solid rgba(255,255,255,.07)",
-
-                          fontSize:
-                            13,
+                          fontSize: 13,
                         }}
                       >
                         <b>
-                          {
-                            row.position
-                          }
+                          {row.position}
                         </b>
 
                         <div
                           style={{
-                            display:
-                              "flex",
-
+                            display: "flex",
                             alignItems:
                               "center",
-
                             gap: 8,
-
-                            minWidth:
-                              0,
+                            minWidth: 0,
                           }}
                         >
                           {row.teamLogo ? (
@@ -1333,68 +1184,48 @@ function Detail({
                               }
                               alt=""
                               style={{
-                                width:
-                                  24,
-
-                                height:
-                                  24,
-
+                                width: 24,
+                                height: 24,
                                 objectFit:
                                   "contain",
                               }}
                             />
                           ) : (
-                            <span>
-                              ⚽
-                            </span>
+                            <span>⚽</span>
                           )}
 
                           <strong
                             style={{
                               overflow:
                                 "hidden",
-
                               textOverflow:
                                 "ellipsis",
-
                               whiteSpace:
                                 "nowrap",
                             }}
                           >
-                            {
-                              row.teamName
-                            }
+                            {row.teamName}
                           </strong>
                         </div>
 
                         <span>
-                          {
-                            row.played
-                          }
+                          {row.played}
                         </span>
 
                         <span>
-                          {
-                            row.wins
-                          }
+                          {row.wins}
                         </span>
 
                         <span>
-                          {
-                            row.draws
-                          }
+                          {row.draws}
                         </span>
 
                         <span>
-                          {
-                            row.losses
-                          }
+                          {row.losses}
                         </span>
 
                         <b>
-                          {
-                            row.points
-                          }
+                          {row.points}
                         </b>
                       </div>
                     )
@@ -1409,10 +1240,7 @@ function Detail({
 }
 
 function App() {
-  const days = useMemo(
-    makeDays,
-    []
-  );
+  const days = useMemo(makeDays, []);
 
   const [tab, setTab] =
     useState("today");
@@ -1423,10 +1251,8 @@ function App() {
   const [today, setToday] =
     useState([]);
 
-  const [
-    serieD,
-    setSerieD,
-  ] = useState([]);
+  const [serieD, setSerieD] =
+    useState([]);
 
   const [
     selectedDate,
@@ -1435,38 +1261,44 @@ function App() {
     days[3]?.key || ""
   );
 
-  const [
-    query,
-    setQuery,
-  ] = useState("");
+  const [query, setQuery] =
+    useState("");
 
-  const [
-    expanded,
-    setExpanded,
-  ] = useState({});
+  const [expanded, setExpanded] =
+    useState({});
 
   const [
     selectedId,
     setSelectedId,
   ] = useState(null);
 
-  const [
-    detail,
-    setDetail,
-  ] = useState(null);
+  const [detail, setDetail] =
+    useState(null);
 
   const [
     loadingDetail,
     setLoadingDetail,
   ] = useState(false);
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
   const [error, setError] =
     useState("");
+
+  const [
+    goalAlert,
+    setGoalAlert,
+  ] = useState(null);
+
+  const previousScoresRef =
+    useRef(new Map());
+
+  const firstLiveLoadRef =
+    useRef(true);
+
+  const goalTimerRef =
+    useRef(null);
 
   const [
     favorites,
@@ -1483,6 +1315,168 @@ function App() {
     }
   });
 
+  function announceGoal(
+    teamName,
+    match
+  ) {
+    const team =
+      teamName || "TIME";
+
+    const home =
+      scoreNumber(
+        match?.goals?.home
+      );
+
+    const away =
+      scoreNumber(
+        match?.goals?.away
+      );
+
+    const phrase =
+      `GOOOOOOOOOOOL DO ${team.toUpperCase()}!`;
+
+    setGoalAlert({
+      team: `GOL DO ${team.toUpperCase()}!`,
+      score: `${home} x ${away}`,
+    });
+
+    if (goalTimerRef.current) {
+      clearTimeout(
+        goalTimerRef.current
+      );
+    }
+
+    goalTimerRef.current =
+      setTimeout(() => {
+        setGoalAlert(null);
+      }, 7000);
+
+    try {
+      if (
+        "speechSynthesis" in window
+      ) {
+        window.speechSynthesis.cancel();
+
+        const voice =
+          new SpeechSynthesisUtterance(
+            phrase
+          );
+
+        voice.lang = "pt-BR";
+        voice.rate = 0.78;
+        voice.pitch = 1.1;
+        voice.volume = 1;
+
+        window.speechSynthesis.speak(
+          voice
+        );
+      }
+    } catch (err) {
+      console.log(
+        "Voz de gol indisponível:",
+        err
+      );
+    }
+
+    try {
+      if (navigator.vibrate) {
+        navigator.vibrate([
+          300,
+          120,
+          300,
+          120,
+          500,
+        ]);
+      }
+    } catch {
+      // vibração indisponível
+    }
+  }
+
+  function detectGoals(
+    liveMatches
+  ) {
+    const nextScores =
+      new Map();
+
+    liveMatches.forEach(
+      (match) => {
+        const id =
+          match?.fixture?.id;
+
+        if (
+          id === undefined ||
+          id === null
+        ) {
+          return;
+        }
+
+        const key =
+          String(id);
+
+        const home =
+          scoreNumber(
+            match?.goals?.home
+          );
+
+        const away =
+          scoreNumber(
+            match?.goals?.away
+          );
+
+        nextScores.set(key, {
+          home,
+          away,
+        });
+
+        if (
+          firstLiveLoadRef.current
+        ) {
+          return;
+        }
+
+        const previous =
+          previousScoresRef.current.get(
+            key
+          );
+
+        if (!previous) {
+          return;
+        }
+
+        if (
+          home >
+          previous.home
+        ) {
+          announceGoal(
+            match?.teams?.home
+              ?.name ||
+              "MANDANTE",
+            match
+          );
+        }
+
+        if (
+          away >
+          previous.away
+        ) {
+          announceGoal(
+            match?.teams?.away
+              ?.name ||
+              "VISITANTE",
+            match
+          );
+        }
+      }
+    );
+
+    previousScoresRef.current =
+      nextScores;
+
+    firstLiveLoadRef.current =
+      false;
+  }
+
   async function load() {
     setLoading(true);
     setError("");
@@ -1497,36 +1491,39 @@ function App() {
 
         getJSON("/today"),
 
-        getJSON(
-          "/serie-d"
-        ).catch(() => ({
-          response: [],
-        })),
+        getJSON("/serie-d").catch(
+          () => ({
+            response: [],
+          })
+        ),
       ]);
 
-      setLive(
+      const newLive =
         Array.isArray(
           liveData?.response
         )
           ? liveData.response
-          : []
-      );
+          : [];
 
-      setToday(
+      const newToday =
         Array.isArray(
           todayData?.response
         )
           ? todayData.response
-          : []
-      );
+          : [];
 
-      setSerieD(
+      const newSerieD =
         Array.isArray(
           serieDData?.response
         )
           ? serieDData.response
-          : []
-      );
+          : [];
+
+      detectGoals(newLive);
+
+      setLive(newLive);
+      setToday(newToday);
+      setSerieD(newSerieD);
     } catch (err) {
       setError(
         err.message ||
@@ -1546,14 +1543,21 @@ function App() {
         15000
       );
 
-    return () =>
+    return () => {
       clearInterval(timer);
+
+      if (
+        goalTimerRef.current
+      ) {
+        clearTimeout(
+          goalTimerRef.current
+        );
+      }
+    };
   }, []);
 
   useEffect(() => {
-    if (!selectedId) {
-      return;
-    }
+    if (!selectedId) return;
 
     setLoadingDetail(true);
     setDetail(null);
@@ -1567,10 +1571,8 @@ function App() {
 
         setDetail(
           Array.isArray(response)
-            ? response[0] ||
-                null
-            : response ||
-                null
+            ? response[0] || null
+            : response || null
         );
       })
       .catch((err) =>
@@ -1592,11 +1594,7 @@ function App() {
           ...today,
           ...serieD,
         ]),
-      [
-        live,
-        today,
-        serieD,
-      ]
+      [live, today, serieD]
     );
 
   const liveMatches =
@@ -1619,47 +1617,37 @@ function App() {
 
   const visibleMatches =
     useMemo(() => {
-      let result =
-        allMatches;
+      let result = allMatches;
 
       if (tab === "live") {
-        result =
-          liveMatches;
+        result = liveMatches;
       }
 
-      if (
-        tab === "finished"
-      ) {
+      if (tab === "finished") {
         result =
           finishedMatches;
       }
 
-      if (
-        tab === "favorites"
-      ) {
+      if (tab === "favorites") {
         result =
           allMatches.filter(
             (match) =>
               favorites.includes(
                 String(
-                  match.fixture
-                    .id
+                  match.fixture.id
                 )
               )
           );
       }
 
-      if (
-        tab === "today"
-      ) {
+      if (tab === "today") {
         result =
           allMatches.filter(
             (match) =>
               localDateKey(
                 match?.fixture
                   ?.date
-              ) ===
-              selectedDate
+              ) === selectedDate
           );
       }
 
@@ -1674,19 +1662,16 @@ function App() {
             (match) =>
               `${
                 match?.teams
-                  ?.home?.name ||
-                ""
+                  ?.home?.name || ""
               } ${
                 match?.teams
-                  ?.away?.name ||
-                ""
+                  ?.away?.name || ""
               } ${
                 match?.league
                   ?.name || ""
               } ${
                 match?.league
-                  ?.country ||
-                ""
+                  ?.country || ""
               }`
                 .toLowerCase()
                 .includes(text)
@@ -1716,9 +1701,8 @@ function App() {
   function toggleFavorite(
     match
   ) {
-    const id = String(
-      match.fixture.id
-    );
+    const id =
+      String(match.fixture.id);
 
     const next =
       favorites.includes(id)
@@ -1726,10 +1710,7 @@ function App() {
             (item) =>
               item !== id
           )
-        : [
-            ...favorites,
-            id,
-          ];
+        : [...favorites, id];
 
     setFavorites(next);
 
@@ -1742,7 +1723,6 @@ function App() {
   function toggleGroup(key) {
     setExpanded((old) => ({
       ...old,
-
       [key]:
         old[key] === false
           ? true
@@ -1754,12 +1734,10 @@ function App() {
     return (
       <Detail
         match={detail}
+        goalAlert={goalAlert}
         onClose={() => {
           setDetail(null);
-
-          setSelectedId(
-            null
-          );
+          setSelectedId(null);
         }}
       />
     );
@@ -1767,15 +1745,17 @@ function App() {
 
   return (
     <div className="app">
+      <GoalAlert
+        alert={goalAlert}
+      />
+
       <header className="mainHeader">
         <div className="brand">
           <img
             className="brandIcon"
             src="/icon.png"
             alt="SoccerPlay"
-            onError={(
-              event
-            ) => {
+            onError={(event) => {
               event.currentTarget.style.display =
                 "none";
             }}
@@ -1795,7 +1775,6 @@ function App() {
         <button
           className="roundButton"
           onClick={load}
-          aria-label="Atualizar"
         >
           <RefreshCw
             className={
@@ -1813,12 +1792,9 @@ function App() {
 
           <input
             value={query}
-            onChange={(
-              event
-            ) =>
+            onChange={(event) =>
               setQuery(
-                event.target
-                  .value
+                event.target.value
               )
             }
             placeholder="Buscar time ou competição"
@@ -1837,42 +1813,37 @@ function App() {
 
         {tab === "today" && (
           <div className="daysStrip">
-            {days.map(
-              (day) => (
-                <button
-                  key={day.key}
-                  className={
-                    selectedDate ===
+            {days.map((day) => (
+              <button
+                key={day.key}
+                className={
+                  selectedDate ===
+                  day.key
+                    ? "day active"
+                    : "day"
+                }
+                onClick={() =>
+                  setSelectedDate(
                     day.key
-                      ? "day active"
-                      : "day"
-                  }
-                  onClick={() =>
-                    setSelectedDate(
-                      day.key
-                    )
-                  }
-                >
-                  <span>
-                    {day.today
-                      ? "HOJE"
-                      : day.weekday}
-                  </span>
+                  )
+                }
+              >
+                <span>
+                  {day.today
+                    ? "HOJE"
+                    : day.weekday}
+                </span>
 
-                  <b>
-                    {day.day}
-                  </b>
-                </button>
-              )
-            )}
+                <b>{day.day}</b>
+              </button>
+            ))}
           </div>
         )}
 
         <section className="summaryBar">
           <div>
             <span>
-              {tab ===
-              "live"
+              {tab === "live"
                 ? "PARTIDAS AO VIVO"
                 : tab ===
                   "favorites"
@@ -1887,9 +1858,7 @@ function App() {
             </span>
 
             <strong>
-              {
-                visibleMatches.length
-              }{" "}
+              {visibleMatches.length}{" "}
               {visibleMatches.length ===
               1
                 ? "jogo"
@@ -1901,10 +1870,8 @@ function App() {
             <i />
 
             <span>
-              {
-                liveMatches.length
-              }{" "}
-              ao vivo
+              {liveMatches.length} ao
+              vivo
             </span>
           </div>
         </section>
@@ -1919,18 +1886,15 @@ function App() {
           allMatches.length ===
             0 && (
             <div className="emptyState">
-              Carregando
-              partidas reais...
+              Carregando partidas
+              reais...
             </div>
           )}
 
         {!loading &&
-          groups.length ===
-            0 && (
+          groups.length === 0 && (
             <div className="emptyState">
-              <Trophy
-                size={28}
-              />
+              <Trophy size={28} />
 
               <strong>
                 Nenhum jogo
@@ -1960,21 +1924,15 @@ function App() {
               </div>
 
               <small>
-                {
-                  groups.length
-                }
+                {groups.length}
               </small>
             </div>
 
             {groups.map(
               (group) => (
                 <CompetitionCard
-                  key={
-                    group.key
-                  }
-                  group={
-                    group
-                  }
+                  key={group.key}
+                  group={group}
                   favorites={
                     favorites
                   }
@@ -2002,8 +1960,7 @@ function App() {
 
         {loadingDetail && (
           <div className="detailLoading">
-            Abrindo
-            partida...
+            Abrindo partida...
           </div>
         )}
       </main>
@@ -2021,9 +1978,7 @@ function App() {
         />
 
         <NavButton
-          active={
-            tab === "live"
-          }
+          active={tab === "live"}
           icon={
             <span className="navLiveDot" />
           }
@@ -2044,9 +1999,7 @@ function App() {
           icon={<Heart />}
           text="Favoritos"
           onClick={() =>
-            setTab(
-              "favorites"
-            )
+            setTab("favorites")
           }
         />
 
@@ -2060,25 +2013,18 @@ function App() {
           }
           text="Encerrados"
           onClick={() =>
-            setTab(
-              "finished"
-            )
+            setTab("finished")
           }
         />
 
         <NavButton
           active={
-            tab ===
-            "leagues"
+            tab === "leagues"
           }
-          icon={
-            <Trophy />
-          }
+          icon={<Trophy />}
           text="Ligas"
           onClick={() =>
-            setTab(
-              "leagues"
-            )
+            setTab("leagues")
           }
         />
       </nav>
@@ -2106,15 +2052,11 @@ function NavButton({
         {icon}
 
         {badge > 0 && (
-          <i>
-            {badge}
-          </i>
+          <i>{badge}</i>
         )}
       </span>
 
-      <span>
-        {text}
-      </span>
+      <span>{text}</span>
     </button>
   );
 }
