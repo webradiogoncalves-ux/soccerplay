@@ -23,6 +23,10 @@ jobs:
         working-directory: frontend
         run: npm install
 
+      - name: Instalar TTS
+        working-directory: frontend
+        run: npm install @capacitor-community/text-to-speech@6.1.0
+
       - name: Configurar endereço da API
         working-directory: frontend
         run: |
@@ -32,13 +36,12 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Instalar Capacitor e TTS
+      - name: Instalar Capacitor
         working-directory: frontend
         run: |
           npm install @capacitor/core@7.4.3
           npm install @capacitor/cli@7.4.3
           npm install @capacitor/android@7.4.3
-          npm install @capacitor-community/text-to-speech@6.1.0
 
       - name: Criar projeto Android
         working-directory: frontend
