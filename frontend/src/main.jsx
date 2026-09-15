@@ -9,8 +9,8 @@ import {
 import "./styles.css";
 
 const API = import.meta.env.VITE_API_BASE || "http://localhost:3001/api";
-const LIVE = new Set(["LIVE","1H","HT","2H","ET","BT","P"]);
-const FINISHED = new Set(["FT","AET","PEN"]);
+const LIVE = new Set(["LIVE", "1H", "HT", "2H", "ET", "BT", "P"]);
+const FINISHED = new Set(["FT", "AET", "PEN"]);
 
 async function getJSON(path) {
   const r = await fetch(`${API}${path}`, { cache: "no-store" });
