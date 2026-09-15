@@ -19,11 +19,13 @@ jobs:
         with:
           node-version: 20
 
-      - name: Instalar dependências
+      - name: Instalar dependências do frontend
         working-directory: frontend
-        run: |
-          npm install
-          npm install @capacitor/core@7.4.3 @capacitor/cli@7.4.3 @capacitor/android@7.4.3 @capacitor-community/text-to-speech@6.1.0
+        run: npm install
+
+      - name: Instalar TTS
+        working-directory: frontend
+        run: npm install @capacitor-community/text-to-speech@6.1.0
 
       - name: Configurar endereço da API
         working-directory: frontend
@@ -33,6 +35,13 @@ jobs:
       - name: Compilar frontend
         working-directory: frontend
         run: npm run build
+
+      - name: Instalar Capacitor
+        working-directory: frontend
+        run: |
+          npm install @capacitor/core@7.4.3
+          npm install @capacitor/cli@7.4.3
+          npm install @capacitor/android@7.4.3
 
       - name: Criar projeto Android
         working-directory: frontend
@@ -48,11 +57,14 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+
       - name: Compilar APK
         working-directory: frontend/android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+        run: ./gradlew assembleDebug
 
       - name: Enviar APK
         uses: actions/upload-artifact@v4
