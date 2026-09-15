@@ -48,13 +48,11 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Dar permissão ao Gradle
-        working-directory: frontend/android
-        run: chmod +x gradlew
-
       - name: Compilar APK
         working-directory: frontend/android
-        run: ./gradlew assembleDebug
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: Enviar APK
         uses: actions/upload-artifact@v4
